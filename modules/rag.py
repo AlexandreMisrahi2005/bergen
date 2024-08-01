@@ -140,7 +140,9 @@ class RAG:
 
         dataset = self.datasets[dataset_split]
         query_dataset_name = self.datasets[dataset_split]['query'].name
-        doc_dataset_name = self.datasets[dataset_split]['doc'].name
+
+        if self.retriever != None or self.reranker !=  None:
+            doc_dataset_name = self.datasets[dataset_split]['doc'].name
 
         # query generation (or copying in case query_generator="copy")
         if self.retriever != None:

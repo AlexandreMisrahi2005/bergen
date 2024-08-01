@@ -1,0 +1,217 @@
+[2024-07-31 16:42:56,375][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-31 16:42:56,377][datasets][INFO] - TensorFlow version 2.8.0 available.
+Unfinished experiment_folder: testbergen/tmp_bioasq_pubmed_ragged_bge-base-en
+experiment_folder testbergen/bioasq_pubmed_ragged_bge-base-en
+run_name: bioasq_pubmed_ragged_bge-base-en
+dataset_folder: datasets/
+index_folder: indexes/
+runs_folder: runs/
+generated_query_folder: generated_queries/
+experiments_folder: testbergen
+retrieve_top_k: 50
+rerank_top_k: 50
+generation_top_k: 5
+pyserini_num_threads: 20
+processing_num_proc: 40
+retriever:
+  init_args:
+    _target_: models.retrievers.dense.Dense
+    model_name: BAAI/bge-base-en-v1.5
+    max_len: 512
+    pooler:
+      _target_: models.retrievers.dense.ClsPooler
+    similarity:
+      _target_: models.retrievers.dense.CosineSim
+    prompt_q: 'Represent this sentence for searching relevant passages: '
+  batch_size: 128
+  batch_size_sim: 2048
+generator:
+  init_args:
+    _target_: models.generators.llm.LLM
+    model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+    max_new_tokens: 64
+    max_length: 2048
+    quantization: int4
+    attn_implementation: sdpa
+    batch_size: 1
+dataset:
+  dev:
+    doc:
+      init_args:
+        _target_: modules.dataset_processor.PubMed2023_Ragged
+        split: train
+    query:
+      init_args:
+        _target_: modules.dataset_processor.BIOASQ11B_Ragged
+        split: train
+  test:
+    doc: null
+    query: null
+prompt:
+  system: You are a helpful assistant. Your task is to extract relevant information
+    from provided documents and to answer to questions as briefly as possible.
+  user: f"Background:\n{docs}\n\nQuestion:\ {question}"
+  system_without_docs: You are a helpful assistant. Answer the questions as briefly
+    as possible.
+  user_without_docs: f"Question:\ {question}"
+
+Processing dataset PubMed-2023_Ragged in train split 
+Processing dataset BIOASQ11B_Ragged in train split 
+TinyLlama/TinyLlama-1.1B-Chat-v1.0
+[2024-07-31 16:43:16,248][accelerate.utils.modeling][INFO] - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+RAG Model:
+Retriever: BAAI/bge-base-en-v1.5
+Generator: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+Run runs//run.retrieve.top_50.BIOASQ11B_Ragged.PubMed-2023_Ragged.dev.BAAI_bge-base-en-v1.5.trec does not exists, running retrieve...
+__________________________________________________
+Query ID: 58bd672d02b8c60953000011
+Query: Could divalent metal transporter 1 deficiency lead to anemia?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: DMT1-mutant erythrocytes have shortened life span, accelerated glycolysis and increased oxidative stress.: Deficiency of the divalent metal transporter 1 (DMT1) leads to hypochromic microcytic anemia. We have previously shown that DMT1 deficiency impairs erythroid differentiation and induces apoptosis of erythroid cells. Here we analyzed metabolic processes and survival of mature erythrocytes in order to address potential involvement of erythrocyte defect in the pathophysiology of the disease.
+Document 2: Expression of iron transport protein Divalent metal transporter 1 (DMT1) increases in response to maternal iron deficiency anemia in near term to term placenta.: Iron deficiency anemia (IDA) is the most prevalent nutritional deficiency disorder in pregnant women. During pregnancy, placental transport protein Divalent metal transporter1 (DMT1) plays a crucial role in transit of iron across placenta. The developing fetus is observed to be immune to anemia despite presence of anemia in the mother. Hence, we planned the present study to explore the effect of maternal IDA on the expression of DMT1 in the placenta.
+Document 3: A spontaneous, recurrent mutation in divalent metal transporter-1 exposes a calcium entry pathway.: Divalent metal transporter-1 (DMT1/DCT1/Nramp2) is the major Fe(2+) transporter mediating cellular iron uptake in mammals. Phenotypic analyses of animals with spontaneous mutations in DMT1 indicate that it functions at two distinct sites, transporting dietary iron across the apical membrane of intestinal absorptive cells, and transporting endosomal iron released from transferrin into the cytoplasm of erythroid precursors. DMT1 also acts as a proton-dependent transporter for other heavy metal ions including Mn(2+), Co(2+), and Cu(2), but not for Mg(2+) or Ca(2+). A unique mutation in DMT1, G185R, has occurred
+Document 4: Mutations in the gene encoding DMT1: clinical presentation and treatment.: Divalent metal transporter 1 (DMT1) is the protein that allows elemental iron entry into the duodenal cell. It is expressed ubiquitously and it also allows the iron exit from the endosomes. This protein plays a central role in iron metabolism and it is strictly regulated. Several animal models elucidate its role in physiology. Recently three patients affected with DMT1 deficiency have been described. This recessively inherited condition appears at birth with severe microcytic anemia. Serum markers could be particularly useful to establish a correct diagnosis: high serum iron, normal total
+Document 5: Intestinal DMT1 Is Essential for Optimal Assimilation of Dietary Copper in Male and Female Mice with Iron-Deficiency Anemia.: Divalent metal-ion transporter 1 (DMT1) may transport copper, but studies to date on this topic have been equivocal. Previously, an ex vivo experiment showed that intestinal copper transport was impaired in Dmt1-mutant Belgrade rats.
+
+
+Question: Could divalent metal transporter 1 deficiency lead to anemia?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+Yes, divalent metal transporter 1 (DMT1) deficiency can lead to anemia. DMT1 is a protein that plays a crucial role in the transport of divalent metal ions, including iron, into and out of cells. In DMT1-deficient
+Label(s):
+['yes']
+
+
+__________________________________________________
+Query ID: 60354a7b1cb411341a000154
+Query: Do honey contain diastases/amylases?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: [Determination of diastase enzyme in honey].
+Document 2: [Studies on the occurrence of acetylcholine and diastase in the honey].
+Document 3: [Improvement of the method of determination of diastase activity in honey].
+Document 4: [On the problem of the quantitative determination of diastase in honey].
+Document 5: A single honey proteome dataset for identifying adulteration by foreign amylases and mining various protein markers natural to honey.: Honey adulteration is a common practice that deceives consumers and devalues the unique curative and food properties of honey. For marketing, each honey must satisfy an internationally valid Codex standard. One of the quality parameters is diastase/amylase activity, which, if lowered, may be compensated for by the addition of foreign amylases. However, the estimation of enzyme activity does not enable identification of artificially added amylases. 45 honey samples were analyzed using label-free nanoLC-MS/MS proteomics. Four honeys were found to contain the
+
+
+Question: Do honey contain diastases/amylases?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+Based on the given text, it is not clear whether the honey samples analyzed by the label-free nanoLC-MS/MS proteomics method contain diastases/amylases. The text only mentions that four honeys were found to contain these enzymes, but there
+Label(s):
+['yes']
+
+
+__________________________________________________
+Query ID: 51542dc3d24251bc0500007e
+Query: What are the symptoms of abacavir hypersensitivity?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Hypersensitivity reactions reported with abacavir.
+Document 2: Abacavir hypersensitivity reaction.
+Document 3: Unusual clinical presentation of hypersensitivity reaction to abacavir.
+Document 4: Abacavir hypersensitivity.
+Document 5: Abacavir hypersensitivity.
+
+
+Question: What are the symptoms of abacavir hypersensitivity?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+1. Hypersensitivity reactions reported with abacavir: The symptoms of abacavir hypersensitivity reported in document 1 include rash, urticaria, angioedema, and Stevens-Johnson syndrome.
+
+2. Abacavir hyp
+Label(s):
+['fever', 'diarrhea', 'nausea', 'gastrointestinal disorders', 'skin rash', 'respiratory symptoms', 'anaphylactic shock', 'vomiting', 'cough', 'enathema']
+
+
+__________________________________________________
+Query ID: 63f9ccdc33942b094c00000f
+Query: Is PRP-40 involved in microexon splicing?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Spliceosomal component PRP-40 is a central regulator of microexon splicing.: Microexons (≤27 nt) play critical roles in nervous system development and function but create unique challenges for the splicing machinery. The mechanisms of microexon regulation are therefore of great interest. We performed a genetic screen for alternative splicing regulators in the C. elegans nervous system and identify PRP-40, a core component of the U1 snRNP. RNA-seq reveals that PRP-40 is required for inclusion of alternatively spliced, but not constitutively spliced, exons. PRP-40 is particularly required for inclusion of neuronal microexons, and our data indicate that PRP-40 is a central regulator
+Document 2: Prp40 pre-mRNA processing factor 40 homolog B (PRPF40B) associates with SF1 and U2AF65 and modulates alternative pre-mRNA splicing in vivo.: The first stable complex formed during the assembly of spliceosomes onto pre-mRNA substrates in mammals includes U1 snRNP, which recognizes the 5' splice site, and the splicing factors SF1 and U2AF, which bind the branch point sequence, polypyrimidine tract, and 3' splice site. The 5' and 3' splice site complexes are thought to be joined together by protein-protein interactions mediated by factors that ensure the fidelity of the initial splice site recognition. In this study, we identified and characterized PRPF40B,
+Document 3: RBFOX and PTBP1 proteins regulate the alternative splicing of micro-exons in human brain transcripts.: Ninety-four percent of mammalian protein-coding exons exceed 51 nucleotides (nt) in length. The paucity of micro-exons (≤ 51 nt) suggests that their recognition and correct processing by the splicing machinery present greater challenges than for longer exons. Yet, because thousands of human genes harbor processed micro-exons, specialized mechanisms may be in place to promote their splicing. Here, we survey deep genomic data sets to define 13,085 micro-exons and to study their splicing mechanisms and molecular functions. More than 60% of annotated human micro-exons exhibit a high
+Document 4: Prp40 and early events in splice site definition.: The alternative splicing (AS) of precursor messenger RNA (pre-mRNA) is a tightly regulated process through which introns are removed to leave the resulting exons in the mRNA appropriately aligned and ligated. The AS of pre-mRNA is a key mechanism for increasing the complexity of proteins encoded in the genome. In humans, more than 90% of genes undergo AS, underscoring the importance of this process in RNA biogenesis. As such, AS misregulation underlies multiple human diseases. The splicing reaction is catalyzed by the spliceosome, a highly dynamic complex that assembles at or near
+Document 5: Prp40 Homolog A Is a Novel Centrin Target.: Pre-mRNA processing protein 40 (Prp40) is a nuclear protein that has a role in pre-mRNA splicing. Prp40 possesses two leucine-rich nuclear export signals, but little is known about the function of Prp40 in the export process. Another protein that has a role in protein export is centrin, a member of the EF-hand superfamily of Ca
+
+
+Question: Is PRP-40 involved in microexon splicing?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+Yes, PRP-40 is involved in microexon splicing. The genetic screen for alternative splicing regulators in the C. elegans nervous system and the identification of PRP-40 as a core component of the U1 snRNP suggest that PRP-4
+Label(s):
+['yes']
+
+
+__________________________________________________
+Query ID: 601d73ee1cb411341a00003f
+Query: Is carpal tunnel syndrome a type of nerve entrapment?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Carpal Tunnel Syndrome and Other Entrapment Neuropathies.: Entrapment neuropathy is the result of pressure on a peripheral nerve as it passes through a narrow canal that is bounded by stiff tissues. In spite of their ubiquitous nature, they are underdiagnosed, underreported, and sometimes not properly managed, especially in developing countries. Entrapment neuropathies are of various types, but the most common type is carpal tunnel syndrome. Mechanisms involved in the pathophysiology of entrapment neuropathies include mechanical compression and nerve ischemia. A clear understanding of the various types and the underlying mechanisms of entrapment neuropathies are invaluable in the decision-making process involved
+Document 2: Association between the: Carpal tunnel syndrome (CTS) is the most common entrapment neuropathy of the upper extremity. In this study, we aimed to clarify the relationships between the
+Document 3: Carpal tunnel syndrome.: Carpal tunnel syndrome is the most commonly diagnosed entrapment neuropathy. This review looks at the current body of evidence to help determine optimal practice for the diagnosis and management of this condition.
+Document 4: Invited commentary. Carpal tunnel syndrome is one of the most common peripheral entrapment neuropathies and is associated with substantial direct medical costs and with economic costs in terms of man day loss and possible continuing disability.
+Document 5: Surgical versus non-surgical treatment for carpal tunnel syndrome.: Carpal tunnel syndrome is the clinical condition resulting from the entrapment of the median nerve in the wrist. It has been accepted as the most frequent entrapment neuropathy. The most common symptoms are tingling, numbness, and pain in the hand that may radiate to the forearm or shoulder. There may be weakness and atrophy of the thenar muscles associated with sensory loss in the affected fingers. There is no universally accepted therapy for carpal tunnel syndrome. Surgical treatment is widely preferred to non-surgical or conservative therapies for overtly symptomatic patients, while mild
+
+
+Question: Is carpal tunnel syndrome a type of nerve entrapment?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+Yes, carpal tunnel syndrome is a type of nerve entrapment. Nerve entrapment refers to the compression of a peripheral nerve as it passes through a narrow canal, which can result in pressure on the nerve, leading to symptoms such as tingling, numb
+Label(s):
+['yes']
+
+

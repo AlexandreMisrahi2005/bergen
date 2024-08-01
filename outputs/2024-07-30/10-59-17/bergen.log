@@ -1,0 +1,8 @@
+[2024-07-30 10:59:22,683][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-30 10:59:22,686][datasets][INFO] - TensorFlow version 2.8.0 available.
+[2024-07-30 10:59:57,089][datasets.builder][WARNING] - Setting num_proc from 40 back to 1 for the train split to disable multiprocessing as it only contains one shard.
+[2024-07-30 10:59:57,419][datasets.builder][WARNING] - Setting num_proc from 40 back to 1 for the validation split to disable multiprocessing as it only contains one shard.
+[2024-07-30 10:59:57,480][datasets.builder][WARNING] - Setting num_proc from 40 back to 1 for the test split to disable multiprocessing as it only contains one shard.
+[2024-07-30 11:00:49,488][faiss.loader][INFO] - Loading faiss with AVX512 support.
+[2024-07-30 11:00:49,542][faiss.loader][INFO] - Successfully loaded faiss with AVX512 support.
+[2024-07-30 11:04:05,722][accelerate.utils.modeling][INFO] - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).

@@ -1,0 +1,5 @@
+- retriever=retromae
+- generator=tinyllama-chat
+- dataset=pubmed_bioasq
+- ++experiments_folder=testbergen
+- +run_name=bioasq_pubmed_ragged_retromae

@@ -1,0 +1,120 @@
+[2024-07-31 13:56:40,883][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-31 13:56:40,885][datasets][INFO] - TensorFlow version 2.8.0 available.
+Unfinished experiment_folder: testbergen/tmp_bioasq_pubmed_ragged_splade-v3
+experiment_folder testbergen/bioasq_pubmed_ragged_splade-v3
+run_name: bioasq_pubmed_ragged_splade-v3
+dataset_folder: datasets/
+index_folder: indexes/
+runs_folder: runs/
+generated_query_folder: generated_queries/
+experiments_folder: testbergen
+retrieve_top_k: 50
+rerank_top_k: 50
+generation_top_k: 5
+pyserini_num_threads: 20
+processing_num_proc: 40
+retriever:
+  init_args:
+    _target_: models.retrievers.splade.Splade
+    model_name: naver/splade-v3
+    max_len: 512
+  batch_size: 128
+  batch_size_sim: 512
+generator:
+  init_args:
+    _target_: models.generators.vllm.LLM
+    model_name: Upstage/SOLAR-10.7B-Instruct-v1.0
+    max_new_tokens: 128
+    max_length: 4096
+    batch_size: 256
+dataset:
+  dev:
+    doc:
+      init_args:
+        _target_: modules.dataset_processor.PubMed2023_Ragged
+        split: train
+    query:
+      init_args:
+        _target_: modules.dataset_processor.BIOASQ11B_Ragged
+        split: train
+  test:
+    doc: null
+    query: null
+prompt:
+  system: You are a helpful assistant. Your task is to extract relevant information
+    from provided documents and to answer to questions as briefly as possible.
+  user: f"Background:\n{docs}\n\nQuestion:\ {question}"
+  system_without_docs: You are a helpful assistant. Answer the questions as briefly
+    as possible.
+  user_without_docs: f"Question:\ {question}"
+
+Processing dataset PubMed-2023_Ragged in train split 
+Processing dataset BIOASQ11B_Ragged in train split 
+Checking dataset..:   0%|          | 0/3837 [00:00<?, ?it/s]Checking dataset..:  94%|█████████▍| 3621/3837 [00:00<00:00, 36199.68it/s]Checking dataset..: 100%|██████████| 3837/3837 [00:00<00:00, 36078.60it/s]
+INFO 07-31 13:57:27 config.py:472] Using fp8 data type to store kv cache. It reduces the GPU memory footprint and boosts the performance. Meanwhile, it may cause accuracy drop without a proper scaling factor
+INFO 07-31 13:57:27 llm_engine.py:176] Initializing an LLM engine (v0.5.3.post1) with config: model='Upstage/SOLAR-10.7B-Instruct-v1.0', speculative_config=None, tokenizer='Upstage/SOLAR-10.7B-Instruct-v1.0', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, rope_scaling=None, rope_theta=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.float16, max_seq_len=4096, download_dir=None, load_format=LoadFormat.AUTO, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=fp8, quantization_param_path=None, device_config=cuda, decoding_config=DecodingConfig(guided_decoding_backend='outlines'), observability_config=ObservabilityConfig(otlp_traces_endpoint=None), seed=0, served_model_name=Upstage/SOLAR-10.7B-Instruct-v1.0, use_v2_block_manager=False, enable_prefix_caching=False)
+INFO 07-31 13:57:27 selector.py:151] Cannot use FlashAttention-2 backend for Volta and Turing GPUs.
+INFO 07-31 13:57:27 selector.py:54] Using XFormers backend.
+INFO 07-31 13:57:29 model_runner.py:680] Starting to load model Upstage/SOLAR-10.7B-Instruct-v1.0...
+INFO 07-31 13:57:29 selector.py:151] Cannot use FlashAttention-2 backend for Volta and Turing GPUs.
+INFO 07-31 13:57:29 selector.py:54] Using XFormers backend.
+INFO 07-31 13:57:30 weight_utils.py:223] Using model weights format ['*.safetensors']
+Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:04<00:16,  4.10s/it]
+Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:08<00:12,  4.11s/it]
+Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:09<00:05,  2.92s/it]
+Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:14<00:03,  3.47s/it]
+Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:18<00:00,  3.80s/it]
+Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:18<00:00,  3.68s/it]
+
+INFO 07-31 13:57:49 model_runner.py:692] Loading model weights took 19.9900 GB
+INFO 07-31 13:57:51 gpu_executor.py:102] # GPU blocks: 5012, # CPU blocks: 2730
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+RAG Model:
+Retriever: naver/splade-v3
+Generator: Upstage/SOLAR-10.7B-Instruct-v1.0
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+Run runs//run.retrieve.top_50.BIOASQ11B_Ragged.PubMed-2023_Ragged.dev.naver_splade-v3.trec does not exists, running retrieve...
+Encoding: naver/splade-v3:   0%|          | 0/30 [00:00<?, ?it/s]Encoding: naver/splade-v3:   3%|▎         | 1/30 [00:00<00:08,  3.46it/s]Encoding: naver/splade-v3:  10%|█         | 3/30 [00:00<00:03,  8.56it/s]Encoding: naver/splade-v3:  17%|█▋        | 5/30 [00:00<00:02, 11.33it/s]Encoding: naver/splade-v3:  23%|██▎       | 7/30 [00:00<00:01, 13.30it/s]Encoding: naver/splade-v3:  30%|███       | 9/30 [00:00<00:01, 14.19it/s]Encoding: naver/splade-v3:  37%|███▋      | 11/30 [00:00<00:01, 15.44it/s]Encoding: naver/splade-v3:  43%|████▎     | 13/30 [00:00<00:01, 15.66it/s]Encoding: naver/splade-v3:  50%|█████     | 15/30 [00:01<00:00, 16.52it/s]Encoding: naver/splade-v3:  57%|█████▋    | 17/30 [00:01<00:00, 16.70it/s]Encoding: naver/splade-v3:  63%|██████▎   | 19/30 [00:01<00:00, 17.24it/s]Encoding: naver/splade-v3:  70%|███████   | 21/30 [00:01<00:00, 17.41it/s]Encoding: naver/splade-v3:  80%|████████  | 24/30 [00:01<00:00, 17.69it/s]Encoding: naver/splade-v3:  87%|████████▋ | 26/30 [00:01<00:00, 18.07it/s]Encoding: naver/splade-v3:  93%|█████████▎| 28/30 [00:01<00:00, 15.11it/s]Encoding: naver/splade-v3: 100%|██████████| 30/30 [00:02<00:00,  5.06it/s]Encoding: naver/splade-v3: 100%|██████████| 30/30 [00:03<00:00,  9.67it/s]
+Load embeddings...:   0%|          | 0/1 [00:00<?, ?it/s]Load embeddings...: 100%|██████████| 1/1 [00:00<00:00, 88.77it/s]
+Load embeddings and retrieve...: 0it [00:00, ?it/s]Load embeddings and retrieve...: 0it [00:00, ?it/s]
+Retrieving docs...:   0%|          | 0/8 [00:00<?, ?it/s]Retrieving docs...:   0%|          | 0/8 [00:00<?, ?it/s]
+Error executing job with overrides: ['retriever=splade-v3', 'generator=vllm_SOLAR-107B', 'dataset=pubmed_bioasq', '++experiments_folder=testbergen', '+run_name=bioasq_pubmed_ragged_splade-v3']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/amisrahi/bergen/bergen.py", line 29, in <module>
+[rank0]:     main()
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/main.py", line 94, in decorated_main
+[rank0]:     _run_hydra(
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 394, in _run_hydra
+[rank0]:     _run_app(
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 457, in _run_app
+[rank0]:     run_and_report(
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 223, in run_and_report
+[rank0]:     raise ex
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 220, in run_and_report
+[rank0]:     return func()
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 458, in <lambda>
+[rank0]:     lambda: hydra.run(
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/hydra.py", line 132, in run
+[rank0]:     _ = ret.return_value
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 260, in return_value
+[rank0]:     raise self._return_value
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 186, in run_job
+[rank0]:     ret.return_value = task_function(task_cfg)
+[rank0]:   File "/home/amisrahi/bergen/bergen.py", line 23, in main
+[rank0]:     rag.eval(dataset_split='dev')
+[rank0]:   File "/home/amisrahi/bergen/modules/rag.py", line 157, in eval
+[rank0]:     query_ids, doc_ids, _ = self.retrieve(
+[rank0]:   File "/home/amisrahi/bergen/modules/rag.py", line 246, in retrieve
+[rank0]:     out_ranking = self.retriever.retrieve(
+[rank0]:   File "/home/amisrahi/bergen/modules/retrieve.py", line 92, in retrieve
+[rank0]:     scores_sorted_topk_chunk, indices_sorted_topk_chunk, embeds_sorted_top_k_chunk   = self.load_collection_and_retrieve(chunk, doc_embeds, top_k_documents, dataset_size=len(dataset['doc']),return_embeddings=self.return_embeddings)
+[rank0]:   File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+[rank0]:     return func(*args, **kwargs)
+[rank0]:   File "/home/amisrahi/bergen/modules/retrieve.py", line 172, in load_collection_and_retrieve
+[rank0]:     raise IOError(f'!!! Index is not complete. Please re-index. Missing {dataset_size-num_emb} documents in the index. !!!')
+[rank0]: OSError: !!! Index is not complete. Please re-index. Missing 34920577 documents in the index. !!!

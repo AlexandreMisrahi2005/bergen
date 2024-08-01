@@ -73,14 +73,16 @@ class Retrieve:
             
             query_embeds = load_embeddings(query_embeds_path)
             query_embeds = query_embeds.to_dense().to('cuda')
-            #query_embeds = query_embeds.to('cuda')
+            # query_embeds = query_embeds.to('cuda')
             self.model.model = self.model.model.to('cpu')
 
             # separate query embedding in chunks
             chunks = torch.split(query_embeds, self.batch_size_sim, dim=0)
             scores_sorted_topk, indices_sorted_topk, embeds_sorted_top_k = list(), list(), list()
 
+            # print("doc_embeds_path: ", doc_embeds_path)
             emb_files = glob.glob(f'{doc_embeds_path}/*.pt')
+            # print("emb_files: ", emb_files)
             sorted_emb_files = sorted(emb_files, key=lambda x: int(''.join(filter(str.isdigit, x))))
 
             doc_embeds = list()
@@ -128,6 +130,14 @@ class Retrieve:
             )
         embs_list = list()
         self.model.model = self.model.model.to('cuda')
+        # print("dataset: ", dataset)
+        # print("dataset[0]: ", dataset[0])
+        # print("chunk_size: ", chunk_size)
+        # print("save_every_n_batches: ", save_every_n_batches)
+        # print("total_n_batches: ", total_n_batches)
+        # print("len(dataset): ", len(dataset))
+        # print("self.batch_size: ", self.batch_size)
+        # print("int(bool(len(dataset) mod self.batch_size)", int(bool(len(dataset)%self.batch_size)))
         for i, batch in tqdm(enumerate(dataloader), total=total_n_batches , desc=f'Encoding: {self.model.model_name}', file=sys.stderr):
             if self.continue_batch != None:
                 if i <= self.continue_batch:
@@ -138,8 +148,12 @@ class Retrieve:
                 emb = emb.detach().cpu()
             embs_list.append(emb)
             # save chunk if save_path provided
+            # print("i: ", i)
             if i % save_every_n_batches == 0 and i != 0 or i == total_n_batches-1:
+                # print("saving embeddings...")
                 chunk_save_path = self.get_chunk_path(save_path, i)
+                # print("save_path: ", save_path)
+                # print("chunk_save_path: ", chunk_save_path)
                 embs = torch.cat(embs_list)
                 if 'splade' in self.model.model_name:
                     embs = embs.to_sparse()
@@ -155,7 +169,9 @@ class Retrieve:
         top_k_scores_list, top_k_indices_list, top_k_embed_list= [], [], []
 
         num_emb = 0
+        # print("doc_embeds: ", doc_embeds)
         for emb_chunk in doc_embeds:
+            # print("emb_chunk: ", emb_chunk)
             emb_chunk = emb_chunk.to('cuda')
             scores_q = self.model.similarity_fn(emb_q, emb_chunk)
             # if detach_and_cpu:
@@ -168,6 +184,8 @@ class Retrieve:
                 top_k_embeddings = emb_chunk_dense[indices_sorted_q]
                 top_k_embed_list.append(top_k_embeddings)
             num_emb += emb_chunk.shape[0]
+        # print("dataset_size: ", dataset_size)
+        # print("num_emb: ", num_emb)
         if num_emb != dataset_size:
             raise IOError(f'!!! Index is not complete. Please re-index. Missing {dataset_size-num_emb} documents in the index. !!!')
 

@@ -1,0 +1,220 @@
+[2024-07-31 16:44:12,357][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-31 16:44:12,359][datasets][INFO] - TensorFlow version 2.8.0 available.
+Unfinished experiment_folder: testbergen/tmp_bioasq_pubmed_ragged_retromae
+experiment_folder testbergen/bioasq_pubmed_ragged_retromae
+run_name: bioasq_pubmed_ragged_retromae
+dataset_folder: datasets/
+index_folder: indexes/
+runs_folder: runs/
+generated_query_folder: generated_queries/
+experiments_folder: testbergen
+retrieve_top_k: 50
+rerank_top_k: 50
+generation_top_k: 5
+pyserini_num_threads: 20
+processing_num_proc: 40
+retriever:
+  init_args:
+    _target_: models.retrievers.dense.Dense
+    model_name: Shitao/RetroMAE_MSMARCO_distill
+    max_len: 512
+    pooler:
+      _target_: models.retrievers.dense.ClsPooler
+    similarity:
+      _target_: models.retrievers.dense.DotProduct
+  batch_size: 128
+  batch_size_sim: 2048
+generator:
+  init_args:
+    _target_: models.generators.llm.LLM
+    model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+    max_new_tokens: 64
+    max_length: 2048
+    quantization: int4
+    attn_implementation: sdpa
+    batch_size: 1
+dataset:
+  dev:
+    doc:
+      init_args:
+        _target_: modules.dataset_processor.PubMed2023_Ragged
+        split: train
+    query:
+      init_args:
+        _target_: modules.dataset_processor.BIOASQ11B_Ragged
+        split: train
+  test:
+    doc: null
+    query: null
+prompt:
+  system: You are a helpful assistant. Your task is to extract relevant information
+    from provided documents and to answer to questions as briefly as possible.
+  user: f"Background:\n{docs}\n\nQuestion:\ {question}"
+  system_without_docs: You are a helpful assistant. Answer the questions as briefly
+    as possible.
+  user_without_docs: f"Question:\ {question}"
+
+Processing dataset PubMed-2023_Ragged in train split 
+Processing dataset BIOASQ11B_Ragged in train split 
+TinyLlama/TinyLlama-1.1B-Chat-v1.0
+[2024-07-31 16:44:32,225][accelerate.utils.modeling][INFO] - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+RAG Model:
+Retriever: Shitao/RetroMAE_MSMARCO_distill
+Generator: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+Run runs//run.retrieve.top_50.BIOASQ11B_Ragged.PubMed-2023_Ragged.dev.Shitao_RetroMAE_MSMARCO_distill.trec does not exists, running retrieve...
+__________________________________________________
+Query ID: 551910d3622b194345000008
+Query: Which proteins have been identified as RET ligands?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Characterization of the ret proto-oncogene products expressed in mouse L cells.: The ret proto-oncogene (proto-ret) encodes a receptor type tyrosine kinase with a cadherin-related sequence in the extracellular domain. To investigate whether the proto-Ret protein functions as a cell adhesion molecule like cadherins, we transfected the human proto-ret gene fused to the SV40 promoter or cytomegalovirus (CMV) promoter into mouse L cells in which cadherins are not expressed. Three transfectants with high levels of expression of the proto-Ret proteins were obtained. The proto-Ret proteins were expressed as 150 kDa and 170 kDa glycoproteins in transfectants as observed in human neuroblastoma
+Document 2: Orphan GPCRs and methods for identifying their ligands.: G protein-coupled receptors (GPCRs) constitute the largest family of cell-surface receptors. These proteins play a crucial role in physiology by facilitating cell communication through recognition of diverse ligands, including bioactive peptides, amines, nucleosides, and lipids. The human genome sequencing project identified more than 100 orphan GPCRs, whose ligands had not yet been discovered. We subsequently identified ghrelin, neuromedin U, and neuromedin S as endogenous ligands of various orphan GPCRs and have proposed various mechanisms through which these peptides regulate physiological functions through their cognate GPCRs. In this chapter, we review methods for
+Document 3: Fast screening of ligand-protein interactions based on ligand-induced protein stabilization of gold nanoparticles.: High throughput screening of small molecular weight (LMW) ligands for protein and sensitive determination of ligand-induced protein stabilization is an important task in drug discovery and in protein structural and functional genomics studies. In this study, gold nanoparticles (AuNPs) and their aggregation property are used to develop a rapid and less equipment intensive assay for screening the interactions between LMW ligands and transcription factors (TFs) and human serum albumin. The assay is based on the fact that the aggregation/discpersion status of AuNPs is very sensitive to the
+Document 4: Applications of fluorescence and bioluminescence resonance energy transfer to drug discovery at G protein coupled receptors.: The role of G protein coupled receptors (GPCRs) in numerous physiological processes that may be disrupted or modified in disease makes them key targets for the development of new therapeutic medicines. A wide variety of resonance energy transfer (RET) techniques such as fluorescence RET and bioluminescence RET have been developed in recent years to detect protein-protein interactions in living cells. Furthermore, these techniques are now being exploited to screen for novel compounds that activate or block GPCRs and to search for new, previously undiscovered
+Document 5: GDNF family ligand RET receptor in the brain of adult zebrafish.: RET is a tyrosine kinase receptor, and transduces signaling by family of glial cell line-derived neurotrophic factor ligands (GFLs). RET is involved in the development of enteric nervous system, of sympathetic, parasympathetic, motor and sensory neurons. RET exists in two main isoforms originated by differential splicing, RET9 and RET51; phylogenetic studies have shown that the RET gene is conserved across vertebrates. The aim of this study was to investigate the RET expression within the brain of zebrafish, using immunohistochemistry, western blotting and RT-PCR. In homogenate brains both RET protein
+
+
+Question: Which proteins have been identified as RET ligands?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+1. G protein-coupled receptors (GPCRs) constitute the largest family of cell-surface receptors. These proteins play a crucial role in physiology by facilitating cell communication through recognition of diverse ligands, including bioactive peptides,
+Label(s):
+['neurturin', 'artemin', 'NTN', 'glial cell-line-derived neurotrophic factor', 'persephin', 'ARTN', 'PSPN', 'GDNF']
+
+
+__________________________________________________
+Query ID: 56c1f038ef6e394741000051
+Query: List symptoms of the IFAP syndrome.
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Ichthyosis follicularis with congenital atrichia, nail dystrophy and palmoplantar keratoderma. Variant of IFAP syndrome or a new entity?: A 23-year-old man was seen for dry, rough skin and alopecia present since birth. There was no history of impaired sweating, photophobia, or lacrimation. Examination revealed generalized cutaneous thorn-like projections with nonscarring alopecia, twenty-nail dystrophy, and palmoplantar keratoderma.
+Document 2: Ichthyosis follicularis with alopecia and photophobia syndrome (IFAP): A Case Report.: IFAP syndrome is a rare autosomal recessive X-linked disease characterized by the triad of alopecia universalis, severe photophobia, and follicular ichthyosis. It is caused by loss of function of the gene MBTPS2. Its severity varies and there are only a few reports in the literature. We present a patient with characteristic clinical features and a mutation not previously reported.
+Document 3: Ichthyosis follicularis, alopecia, and photophobia (IFAP) syndrome.: The IFAP syndrome is a rare X-linked genetic disorder reported in nearly 40 patients. It is characterized by the triad of Ichthyosis Follicularis, Alopecia, and Photophobia from birth. Other features such as short stature, intellectual disability, and seizures may develop in the first few years of life. Skin histopathology is non-specific and consists of dilated hair follicles with keratin plugs extending above the surface of the skin, decreased or absent sebaceous glands, and decreased desmosomes in number and size. The disorder results from mutations in the MBTPS2 gene that impairs cholesterol homeostasis and
+Document 4: [IFAP syndrome(ichthyosis follicularis, alopecia, and photophobia syndrome)].
+Document 5: Ichthyosis Follicularis, Alopecia, and Photophobia (IFAP) Syndrome: A Case Report and Review of Cases Reported from India.: Ichthyosis follicularis, alopecia, and photophobia (IFAP) syndrome is characterized by the triad of follicular keratotic papules, total to subtotal alopecia, and photophobia. We hereby report a case of IFAP syndrome in a 1-year-old boy who presented with all these classical features along with hyperkeratotic plaques over knees, plantar keratoderma, and umbilical hernia. Also, literature review of cases reported from India is being presented.
+
+
+Question: List symptoms of the IFAP syndrome.</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+1. Ichthyosis follicularis, alopecia, and photophobia (IFAP) syndrome: A rare autosomal recessive X-linked disease characterized by the triad of alopecia universalis, severe photophobia, and follicular
+Label(s):
+['follicular ichthyosis', 'atrichia', 'photophobia']
+
+
+__________________________________________________
+Query ID: 53035d7c2059c6d71c000085
+Query: What is commotio cordis?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Commodio cordis: an underappreciated cause of sudden cardiac death in young patients: assessment and management in the ED.: Commotio cordis is the condition of sudden cardiac death or near sudden cardiac death after blunt, low-impact chest wall trauma in the absence of structural cardiac abnormality. Ventricular fibrillation is the most commonly reported induced arrhythmia in commotio cordis. Blunt impact injury to the chest with a baseball is the most common mechanism. Survival rates for commotio cordis are low, even with prompt CPR and defibrillation.
+Document 2: Commotio cordis.: Commotio cordis is blunt, nonpenetrating trauma to the chest resulting in irregular heart rhythm and often leading to sudden death. This article presents the epidemiology, variables leading to commotio cordis, theories on predisposing factors, diagnosis, treatment, treatment outcomes, and return-to-play recommendations.
+Document 3: Ventricular fibrillation arrest after blunt chest trauma in a 33-year-old man, commotio cordis?: Commotio cordis is an event in which a blunt, non-penetrating blow to the chest occurs, triggering a life-threatening arrhythmia and often sudden death. This phenomenon is often seen in young, male athletes and has become increasingly well-known over the past few decades. We present a unique case in which ventricular fibrillation occurs in an older male athlete after blunt trauma.
+Document 4: Size as an Important Determinant of Chest Blow-induced Commotio Cordis.: Commotio cordis is sudden cardiac death caused by a relatively innocent blow to the left chest wall. Adolescents account for the majority of the cases; whether this is due to the higher frequency of adolescents playing ball sports or whether there is some maturational reduction of risk is not known.
+Document 5: Defining Commotio Cordis.
+
+
+Question: What is commotio cordis?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+Commotio cordis is a rare and life-threatening arrhythmia caused by a blunt, non-penetrating blow to the chest, leading to irregular heart rhythm and often leading to sudden death. It is a phenomenon that has become increasingly well-known over the
+Label(s):
+['blunt thoracic impact causing sudden death']
+
+
+__________________________________________________
+Query ID: 590c740d70f9fc6f0f00001d
+Query: Which proteins are controlling sterol metabolism in S. cerevisiae?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Ergosterol Turnover in Yeast: An Interplay between Biosynthesis and Transport.: Sterols are important components of biological membranes that determine the physicochemical properties of lipid bilayer and regulate the functioning of membrane proteins. Being insoluble in water, sterols cannot diffuse between the membrane compartments separated by an aqueous phase. For this reason, distribution of sterols across cellular membranes is rather uneven. Membrane-to-membrane transport of sterols occurs mainly in a non-vesicular fashion and is provided by Lam and Osh proteins. In this review, we discuss the consequences of impairments in sterol biosynthesis and transport mostly relying on the studies performed on the
+Document 2: Structural advances in sterol-sensing domain-containing proteins.: The sterol-sensing domain (SSD) is present in several membrane proteins that function in cholesterol metabolism, transport, and signaling. Recent progress in structural studies of SSD-containing proteins, such as sterol regulatory element-binding protein (SREBP)-cleavage activating protein (Scap), Patched, Niemann-Pick disease type C1 (NPC1), and related proteins, reveals a conserved core that is essential for their sterol-dependent functions. This domain, by its name, 'senses' the presence of sterol substrates through interactions and may modulate protein behaviors with changing sterol levels. We summarize recent advances in structural and mechanistic investigations of these proteins and propose to divide
+Document 3: The spatial organization of lipid synthesis in the yeast Saccharomyces cerevisiae derived from large scale green fluorescent protein tagging and high resolution microscopy.: The localization pattern of proteins involved in lipid metabolism in the yeast Saccharomyces cerevisiae was determined using C-terminal green fluorescent protein tagging and high resolution confocal laser scanning microscopy. A list of 493 candidate proteins ( approximately 9% of the yeast proteome) was assembled based on proteins of known function in lipid metabolism, their interacting proteins, proteins defined by genetic interactions, and regulatory factors acting on selected genes or proteins. Overall 400 (81%) transformants yielded a positive
+Document 4: Sterol specificity of the Saccharomyces cerevisiae ERG6 gene product expressed in Escherichia coli.: The ERG6 gene from Saccharomyces cerevisiae has been functionally expressed in Escherichia coli, for the first time, yielding a protein that catalyzes the bisubstrate transfer reaction whereby the reactive methyl group from (S)-adenosyl-L-methionine is transferred stereoselectively to C-24 of the sterol side chain. The structural requirements of sterol in binding and catalysis were similar to the native protein from S. cerevisiae. Inhibition of biomethylation was observed with fecosterol and ergosterol which suggests that ergosterol may function in wild-type yeast as feedback regulator of sterol biosynthesis.
+Document 5: Regulation of sterol biosynthesis in Saccharomyces cerevisiae.: Sterol synthesis in Saccharomyces cerevisiae was primarily controlled by the growth rate. At low specific growth rates the intermediates of ergosterol biosynthesis prevailed in cells. At the same time, the total sterol content reached about 6% of dry matter whereas the content of ergosterol was only 2-2.5%, which seems to be the maximum value for S. cerevisiae. After esterification with fatty acids these sterol intermediates are stored in lipid globules together with reserve triacylglycerols. The sporulating S. cerevisiae cells contained 3.5% sterols and 1.5% ergosterol of dry matter.
+
+
+Question: Which proteins are controlling sterol metabolism in S. cerevisiae?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+1. Ergosterol Turnover in Yeast: An Interplay between Biosynthesis and Transport.: Sterols are important components of biological membranes that determine the physicochemical properties of lipid bilayer and regulate the functioning of membrane proteins. Being insolub
+Label(s):
+['ERG2', 'Osh1p', 'UCP2', 'ERG11', 'Osh7p', 'NCP1']
+
+
+__________________________________________________
+Query ID: 54c225bcf693c3b16b000002
+Query: Mutations of which genes have been associated with Catecholaminergic Polymorphic Ventricular Tachycardia (CPVT)?
+__________________________________________________
+Instruction to Generator:
+<|system|>
+You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible.</s>
+<|user|>
+Background:
+Document 1: Clinical phenotype and functional characterization of CASQ2 mutations associated with catecholaminergic polymorphic ventricular tachycardia.: Four distinct mutations in the human cardiac calsequestrin gene (CASQ2) have been linked to catecholaminergic polymorphic ventricular tachycardia (CPVT). The mechanisms leading to the clinical phenotype are still poorly understood because only 1 CASQ2 mutation has been characterized in vitro.
+Document 2: An Optogenetic Arrhythmia Model-Insertion of Several Catecholaminergic Polymorphic Ventricular Tachycardia Mutations Into: Catecholaminergic polymorphic ventricular tachycardia (CPVT) is an inherited disturbance of the heart rhythm (arrhythmia) that is induced by stress or that occurs during exercise. Most mutations that have been linked to CPVT are found in two genes, i.e., ryanodine receptor 2 (RyR2) and calsequestrin 2 (CASQ2), two proteins fundamentally involved in the regulation of intracellular Ca
+Document 3: A novel heterozygous mutation in cardiac calsequestrin causes autosomal dominant catecholaminergic polymorphic ventricular tachycardia.: Catecholaminergic polymorphic ventricular tachycardia (CPVT) is a lethal inherited arrhythmia syndrome characterized by adrenergically stimulated ventricular tachycardia. Mutations in the cardiac ryanodine receptor gene (RYR2) cause an autosomal dominant form of CPVT, while mutations in the cardiac calsequestrin 2 gene (CASQ2) cause an autosomal recessive form.
+Document 4: Clinical and molecular characterization of patients with catecholaminergic polymorphic ventricular tachycardia.: Mutations in the cardiac ryanodine receptor gene (RyR2) underlie catecholaminergic polymorphic ventricular tachycardia (CPVT), an inherited arrhythmogenic disease occurring in the structurally intact heart. The proportion of patients with CPVT carrying RyR2 mutations is unknown, and the clinical features of RyR2-CPVT as compared with nongenotyped CPVT are undefined.
+Document 5: Accelerated sinus rhythm prevents catecholaminergic polymorphic ventricular tachycardia in mice and in patients.: Catecholaminergic polymorphic ventricular tachycardia (CPVT) is caused by mutations in cardiac ryanodine receptor (RyR2) or calsequestrin (Casq2) genes. Sinoatrial node dysfunction associated with CPVT may increase the risk for ventricular arrhythmia (VA).
+
+
+Question: Mutations of which genes have been associated with Catecholaminergic Polymorphic Ventricular Tachycardia (CPVT)?</s>
+<|assistant|>
+
+Response:
+
+
+LLM Answer:
+
+1. CASQ2
+2. RyR2
+3. CASQ2
+4. RyR2
+5. CASQ2
+
+Note: The answer to the question is "CASQ2"
+Label(s):
+['potassium channel, inwardly rectifying subfamily J, member 2', 'KCNJ2', 'calsequestrin 2', 'CALM1', 'ryanodine receptor 2', 'RYR2', 'TRDN', 'triadin', 'calmodulin 1', 'CASQ2']
+
+

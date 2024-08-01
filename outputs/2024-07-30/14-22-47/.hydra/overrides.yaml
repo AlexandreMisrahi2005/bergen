@@ -1,0 +1,5 @@
+- generator=vllm_SOLAR-107B
+- retriever=bm25
+- dataset=pubmed_bioasq
+- ++experiments_folder=testbergen
+- +run_name=try_bioasq

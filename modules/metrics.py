@@ -49,8 +49,8 @@ def normalize(s: str) -> str:
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
 def f1_single(prediction, ground_truth, tokenfun=lambda x: x.split()):
-    prediction_tokens = tokenfun(prediction)
-    ground_truth_tokens = tokenfun(ground_truth)
+    prediction_tokens = tokenfun(normalize(prediction))
+    ground_truth_tokens = tokenfun(normalize(ground_truth))
     common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
     num_same = sum(common.values())
     if num_same == 0:
@@ -105,6 +105,11 @@ def rouge_score(predictions, references):
 def f1_score(predictions, references, tokenfun=lambda x: x.split()):
     f1, precision, recall = list(), list(), list()
     for ground_truths, prediction in zip(references, predictions):
+        print(ground_truths)
+        print(prediction)
+        print()[f1_single(prediction, gt, tokenfun) for gt in ground_truths]
+        print([max(values) for values in zip(*[f1_single(prediction, gt, tokenfun) for gt in ground_truths])])
+        print()
         f1_, precision_, recall_ = [max(values) for values in zip(*[f1_single(prediction, gt, tokenfun) for gt in ground_truths])]
         f1.append(f1_)
         precision.append(precision_)

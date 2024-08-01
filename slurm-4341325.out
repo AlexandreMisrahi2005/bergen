@@ -1,0 +1,108 @@
+[2024-07-30 14:16:33,552][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-30 14:16:33,556][datasets][INFO] - TensorFlow version 2.8.0 available.
+Unfinished experiment_folder: testbergen/tmp_try_bioasq
+experiment_folder testbergen/try_bioasq
+run_name: try_bioasq
+dataset_folder: datasets/
+index_folder: indexes/
+runs_folder: runs/
+generated_query_folder: generated_queries/
+experiments_folder: testbergen
+retrieve_top_k: 50
+rerank_top_k: 50
+generation_top_k: 5
+pyserini_num_threads: 20
+processing_num_proc: 40
+retriever:
+  init_args:
+    _target_: models.retrievers.bm25.BM25
+    model_name: bm25
+  batch_size: 512
+  batch_size_sim: 2048
+generator:
+  init_args:
+    _target_: models.generators.vllm.LLM
+    model_name: Upstage/SOLAR-10.7B-Instruct-v1.0
+    max_new_tokens: 128
+    max_length: 4096
+    batch_size: 256
+dataset:
+  train:
+    doc:
+      init_args:
+        _target_: modules.dataset_processor.PubMed2023
+        split: train
+        data_path: /beegfs/scratch/project/calmar/data/pubmed2023/*.tsv
+    query:
+      init_args:
+        _target_: modules.dataset_processor.BIOASQ11B
+        split: train
+        data_path: /beegfs/scratch/project/calmar/data/bioasq11btrain/bioasq11btrain.tsv
+  dev:
+    doc:
+      init_args:
+        _target_: modules.dataset_processor.PubMed2023
+        split: train
+        data_path: /beegfs/scratch/project/calmar/data/pubmed2023/*.tsv
+    query:
+      init_args:
+        _target_: modules.dataset_processor.BIOASQ11B
+        split: train
+        data_path: /beegfs/scratch/project/calmar/data/bioasq11btrain/bioasq11btrain.tsv
+  test:
+    doc: null
+    query: null
+prompt:
+  system: You are a helpful assistant. Your task is to extract relevant information
+    from provided documents and to answer to questions as briefly as possible.
+  user: f"Background:\n{docs}\n\nQuestion:\ {question}"
+  system_without_docs: You are a helpful assistant. Answer the questions as briefly
+    as possible.
+  user_without_docs: f"Question:\ {question}"
+
+Error executing job with overrides: ['generator=vllm_SOLAR-107B', 'retriever=bm25', 'dataset=pubmed_bioasq', '++experiments_folder=testbergen', '+run_name=try_bioasq']
+Traceback (most recent call last):
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/instantiate/_instantiate2.py", line 92, in _call_target
+    return _target_(*args, **kwargs)
+  File "/home/amisrahi/bergen/modules/dataset_processor.py", line 969, in __init__
+    super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+TypeError: Processor.__init__() got an unexpected keyword argument 'data_path'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/amisrahi/bergen/bergen.py", line 29, in <module>
+    main()
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/main.py", line 94, in decorated_main
+    _run_hydra(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 394, in _run_hydra
+    _run_app(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 457, in _run_app
+    run_and_report(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 223, in run_and_report
+    raise ex
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 220, in run_and_report
+    return func()
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 458, in <lambda>
+    lambda: hydra.run(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/hydra.py", line 132, in run
+    _ = ret.return_value
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 260, in return_value
+    raise self._return_value
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 186, in run_job
+    ret.return_value = task_function(task_cfg)
+  File "/home/amisrahi/bergen/bergen.py", line 18, in main
+    rag = RAG(**config, config=config)
+  File "/home/amisrahi/bergen/modules/rag.py", line 103, in __init__
+    self.datasets = ProcessDatasets.process(
+  File "/home/amisrahi/bergen/modules/dataset_processor.py", line 1151, in process
+    processor = instantiate(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/instantiate/_instantiate2.py", line 226, in instantiate
+    return instantiate_node(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/instantiate/_instantiate2.py", line 347, in instantiate_node
+    return _call_target(_target_, partial, args, kwargs, full_key)
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/instantiate/_instantiate2.py", line 97, in _call_target
+    raise InstantiationException(msg) from e
+hydra.errors.InstantiationException: Error in call to target 'modules.dataset_processor.PubMed2023':
+TypeError("Processor.__init__() got an unexpected keyword argument 'data_path'")
+full_key: dataset.train.doc.init_args

@@ -1,0 +1,32 @@
+[2024-07-31 12:33:12,742][datasets][INFO] - PyTorch version 2.3.1 available.
+[2024-07-31 12:33:12,744][datasets][INFO] - TensorFlow version 2.8.0 available.
+Unfinished experiment_folder: testbergen/tmp_try_bioasq_pubmed_ragged
+Error executing job with overrides: ['retriever=splade-v3', 'generator=vllm_SOLAR-107B', 'dataset=pubmed_bioasq', '++experiments_folder=testbergen', '+run_name=try_bioasq_pubmed_ragged']
+Traceback (most recent call last):
+  File "/home/amisrahi/bergen/bergen.py", line 29, in <module>
+    main()
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/main.py", line 94, in decorated_main
+    _run_hydra(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 394, in _run_hydra
+    _run_app(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 457, in _run_app
+    run_and_report(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 223, in run_and_report
+    raise ex
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 220, in run_and_report
+    return func()
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/utils.py", line 458, in <lambda>
+    lambda: hydra.run(
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/_internal/hydra.py", line 132, in run
+    _ = ret.return_value
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 260, in return_value
+    raise self._return_value
+  File "/beegfs/scratch/user/amisrahi/miniconda3/envs/bergen/lib/python3.10/site-packages/hydra/core/utils.py", line 186, in run_job
+    ret.return_value = task_function(task_cfg)
+  File "/home/amisrahi/bergen/bergen.py", line 18, in main
+    rag = RAG(**config, config=config)
+  File "/home/amisrahi/bergen/modules/rag.py", line 101, in __init__
+    self.run_name, self.experiment_folder = init_experiment(config, experiments_folder, index_folder, runs_folder, run_name, overwrite_exp=self.overwrite_exp, continue_batch=continue_batch)
+  File "/home/amisrahi/bergen/utils.py", line 280, in init_experiment
+    raise OSError(f"Experiment {finished_exp_name} already exists!")
+OSError: Experiment testbergen/try_bioasq_pubmed_ragged already exists!
