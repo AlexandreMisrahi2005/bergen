@@ -105,11 +105,6 @@ def rouge_score(predictions, references):
 def f1_score(predictions, references, tokenfun=lambda x: x.split()):
     f1, precision, recall = list(), list(), list()
     for ground_truths, prediction in zip(references, predictions):
-        print(ground_truths)
-        print(prediction)
-        print()[f1_single(prediction, gt, tokenfun) for gt in ground_truths]
-        print([max(values) for values in zip(*[f1_single(prediction, gt, tokenfun) for gt in ground_truths])])
-        print()
         f1_, precision_, recall_ = [max(values) for values in zip(*[f1_single(prediction, gt, tokenfun) for gt in ground_truths])]
         f1.append(f1_)
         precision.append(precision_)

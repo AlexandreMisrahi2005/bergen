@@ -11,4 +11,4 @@
 
 source ~/.bashrc
 conda activate bergen
-python3 bergen.py retriever='bge-base-en-v1.5' generator='tinyllama-chat' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=bioasq_pubmed_ragged_bge-base-en
+python3 bergen.py retriever='bge-base-en-v1.5' generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=bioasq_pubmed_ragged_bge-base-en

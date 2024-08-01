@@ -148,6 +148,7 @@ class BIOASQ11B_Ragged(Processor):
         dataset = datasets.load_dataset(hf_name, 'bioasq', num_proc=self.num_proc)[self.split]
         # ['id', 'input', 'output', 'question_type']
         dataset = dataset.map(lambda example: {'label': [dictt["answer"] for dictt in example["output"] if dictt["answer"] is not None]})
+        dataset = dataset.map(lambda example: {'label': [" ".join(example['label'])] if example['question_type'] == 'list' else example['label']})  # concatenate list question types to compute recall on all labels (see metrics computation)
         dataset = dataset.rename_column("input", "content")
         dataset = dataset.remove_columns(['question_type', 'output'])
         return dataset
@@ -1042,7 +1043,7 @@ class PubMed2023_Ragged_notitle(Processor):
         dataset = datasets.load_dataset(hf_name, 'pubmed', num_proc=self.num_proc)[self.split]
 
         filtered_data = []
-        for i,row in enumerate(tqdm(dataset)):
+        for row in tqdm(dataset):
             real_id, field_type = row['id'].split('_')
             if field_type == '1':
                 filtered_data.append({"id":real_id, "content":row['contents']})

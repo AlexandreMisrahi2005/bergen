@@ -22,13 +22,11 @@ retriever:
   batch_size_sim: 2048
 generator:
   init_args:
-    _target_: models.generators.llm.LLM
-    model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
-    max_new_tokens: 64
-    max_length: 2048
-    quantization: int4
-    attn_implementation: sdpa
-    batch_size: 1
+    _target_: models.generators.vllm.LLM
+    model_name: Upstage/SOLAR-10.7B-Instruct-v1.0
+    max_new_tokens: 128
+    max_length: 4096
+    batch_size: 512
 dataset:
   dev:
     doc:

@@ -16,4 +16,4 @@
 # python3 bergen.py generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=try_bioasq
 # python3 bergen.py generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=try_bioasq_ragged
 # python3 bergen.py retriever='bm25' generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=try_bioasq_pubmed_ragged
-python3 bergen.py retriever='bm25' generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=try_bioasq_pubmed_ragged_notitle
+# python3 bergen.py retriever='bm25' generator='vllm_SOLAR-107B' dataset='pubmed_bioasq' ++experiments_folder=testbergen +run_name=try_bioasq_pubmed_ragged_notitle

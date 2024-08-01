@@ -5,4 +5,7 @@ tests/dataset/
 tests/index/
 tests/exp/
 tests/run/
+
 slurm_output/*
+testbergen/*
+scripts/slurm_scripts/*
