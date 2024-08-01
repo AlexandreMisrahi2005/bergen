@@ -5,4 +5,4 @@ tests/dataset/
 tests/index/
 tests/exp/
 tests/run/
-slurm_output/
+slurm_output/*
