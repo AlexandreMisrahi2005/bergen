@@ -12,7 +12,7 @@
 dev:
     doc: 
         init_args:
-            _target_: modules.dataset_processor.PubMed2023_Ragged_notitle
+            _target_: modules.dataset_processor.PubMed2023_Ragged
             split: "train"
             # data_path: "/beegfs/scratch/project/calmar/data/pubmed2023/*.tsv"
     query: 

@@ -6,6 +6,12 @@ tests/index/
 tests/exp/
 tests/run/
 
-slurm_output/*
-testbergen/*
-scripts/slurm_scripts/*
+datasets/
+indexes/
+outputs/
+
+slurm_output/
+slurm_output_backup/
+testbergen/
+testbergen_backup/
+scripts/slurm_scripts/
