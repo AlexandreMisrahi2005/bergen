@@ -1,4 +1,0 @@
-[2024-07-30 19:06:03,992][datasets][INFO] - PyTorch version 2.3.1 available.
-[2024-07-30 19:06:03,995][datasets][INFO] - TensorFlow version 2.8.0 available.
-[2024-07-30 19:06:07,378][faiss.loader][INFO] - Loading faiss with AVX512 support.
-[2024-07-30 19:06:07,495][faiss.loader][INFO] - Successfully loaded faiss with AVX512 support.

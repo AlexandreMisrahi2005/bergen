@@ -1,5 +1,0 @@
-- retriever=splade-v3
-- generator=vllm_SOLAR-107B
-- dataset=pubmed_bioasq
-- ++experiments_folder=testbergen
-- +run_name=bioasq_pubmed_ragged_splade-v3

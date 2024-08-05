@@ -1,4 +1,0 @@
-- generator=vllm_SOLAR-107B
-- dataset=pubmed_bioasq
-- ++experiments_folder=testbergen
-- +run_name=try_bioasq

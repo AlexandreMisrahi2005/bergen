@@ -1,4 +1,0 @@
-- retriever=bm25
-- reranker=minilm6
-- generator=tinyllama-chat
-- dataset=kilt_nq
