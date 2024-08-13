@@ -7,7 +7,7 @@ defaults:
     - generator: null
     - dataset: ??
     - train: null
-    - prompt: basic
+    - prompt: api
 
 # main variables locating the local data folder and index
 run_name: null
@@ -18,9 +18,9 @@ generated_query_folder: 'generated_queries/'
 experiments_folder: 'experiments/'    
 
 # topk documents to retrieve, rerank and to use for generation
-retrieve_top_k: 50
-rerank_top_k: 50
-generation_top_k: 5
+retrieve_top_k: 25
+rerank_top_k: 25
+generation_top_k: 3
 
 
 #

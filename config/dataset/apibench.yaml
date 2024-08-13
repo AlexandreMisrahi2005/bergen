@@ -1,0 +1,11 @@
+dev:
+    doc:
+        init_args:
+            _target_: modules.dataset_processor.API_gorilla
+            # self.split should be one of ['huggingface', 'torchhub', 'tensorflowhub']
+            split: 'huggingface'
+    query: 
+        init_args:
+            _target_: modules.dataset_processor.APIBench_gorilla
+            # self.split should be one of ['huggingface', 'torchhub', 'tensorflow']
+            split: 'huggingface'

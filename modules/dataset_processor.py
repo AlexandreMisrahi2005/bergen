@@ -15,7 +15,7 @@ import urllib.request
 import json
 import requests  
 from functools import partial
-
+import pandas as pd
 
 # Base class that every processor interhits from 
 class Processor(object):
@@ -1197,6 +1197,284 @@ class MergedDocDataset(Processor):
             dataset = self.shuffled_labels_as_content(dataset)
         dataset.name = self.dataset_name + debug_str + oracle_provenance_str
         return dataset
+
+
+# class APIBench_gorilla(Processor):
+
+#     def __init__(self, *args, **kwargs):
+#         self.dataset_name = 'APIBench_gorilla'
+#         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+#     def process(self):
+
+#         split = 'eval' # train or eval
+#         apibench_files = {
+#             'huggingface_eval.json': f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/huggingface_{split}.json',
+#             'tensorflow_eval.json': f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/tensorflow_{split}.json',
+#             'torchhub_eval.json': f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/torchhub_{split}.json',
+#         }
+
+#         def download_file(url):
+#             print(f"Downloading {url}...")
+#             response = requests.get(url)
+#             response.raise_for_status()  # Check if the request was successful
+#             data = []
+#             for line in response.text.strip().split('\n'):
+#                 data.append(json.loads(line))
+#             return data
+
+#         def index(data):
+#             """
+#             data: list of python dictionaries
+#             """
+#             for i,_ in enumerate(data):
+#                 data[i]['id'] = i
+#                 if 'performance' in data[i]:
+#                     del data[i]['performance']
+#             return data
+
+#         def retrieve_oracle(benchmark, docs):
+#             """
+#             Needs to be called with huggingface map() function
+#             Args: 
+#                 benchmark: dataset row that needs to retrieve its oracles
+#                 docs: huggingface dataset with columns 'id' and 'api_call'
+#             """
+#             oracles_found = list()
+#             for row in docs:
+#                 if row["api_call"] == benchmark["api_call"]:
+#                     oracles_found.append(row['id'])
+#             benchmark["oracle_docs"] = oracles_found
+#             return benchmark
+
+#         api_data = []
+#         for _, url in apibench_files.items():
+#             api_data += download_file(url)
+        
+#         print('Processing...')
+#         indexed_api_bench = index(api_data)
+#         tmp_df = pd.DataFrame(data=indexed_api_bench)
+
+#         def get_instruction(x):
+#             tmp = x.split('###Instruction:')
+#             if len(tmp) == 2:
+#                 tmp = tmp[1].split('###Output:')
+#                 return tmp[0].strip().replace('\n', '\\')
+#             else:
+#                 tmp = x.split('### Instruction:')
+#                 if len(tmp) == 2:
+#                     tmp = tmp[1].split('###Output:')
+#                     if len(tmp) >= 2:
+#                         return tmp[0].strip().replace('\n', '\\')
+#                     else:
+#                         tmp = tmp[0].split('### Output:')
+#                         if len(tmp) >= 2:
+#                             return tmp[0].strip().replace('\n', '\\')
+#                 else:
+#                     return None
+            
+#         tmp_df['content'] = tmp_df['code'].apply(get_instruction)
+#         def listify_label(row):
+#             row['label'] = [row['label']]
+#             return row
+#         tmp_df['label'] = tmp_df['api_call']
+#         tmp_df = tmp_df.drop(['code', 'provider', 'api_data'], axis=1).dropna()
+#         # api_dataset = API_gorilla().process()
+#         api_bench_dataset = datasets.Dataset.from_pandas(tmp_df)# .map(retrieve_oracle, remove_columns=['api_call', '__index_level_0__'], fn_kwargs={'docs':api_dataset})
+#         api_bench_dataset = api_bench_dataset.remove_columns(["api_call", "__index_level_0__"]).cast_column('id', datasets.Value('string')).map(listify_label)
+#         print('Done.')
+#         return api_bench_dataset
+    
+class APIBench_gorilla(Processor):
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'APIBench_gorilla_by_source'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        """
+        self.split should be one of ['huggingface', 'tensorflow', 'torchhub']
+        """
+        apibench_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/{self.split}_eval.json'
+
+        def download_file(url):
+            print(f"Downloading {url}...")
+            response = requests.get(url)
+            response.raise_for_status()  # Check if the request was successful
+            data = []
+            for line in response.text.strip().split('\n'):
+                data.append(json.loads(line))
+            return data
+
+        def index(data):
+            """
+            data: list of python dictionaries
+            """
+            for i,_ in enumerate(data):
+                data[i]['id'] = i
+                if 'performance' in data[i]:
+                    del data[i]['performance']
+            return data
+
+        def retrieve_oracle(benchmark, docs):
+            """
+            Needs to be called with huggingface map() function
+            Args: 
+                benchmark: dataset row that needs to retrieve its oracles
+                docs: huggingface dataset with columns 'id' and 'api_call'
+            """
+            oracles_found = list()
+            for row in docs:
+                if row["api_call"] == benchmark["api_call"]:
+                    oracles_found.append(row['id'])
+            benchmark["oracle_docs"] = oracles_found
+            return benchmark
+
+        api_data = download_file(apibench_file)
+        
+        print('Processing...')
+        indexed_api_bench = index(api_data)
+        tmp_df = pd.DataFrame(data=indexed_api_bench)
+
+        def get_instruction(x):
+            tmp = x.split('###Instruction:')
+            if len(tmp) == 2:
+                tmp = tmp[1].split('###Output:')
+                return tmp[0].strip().replace('\n', '\\')
+            else:
+                tmp = x.split('### Instruction:')
+                if len(tmp) == 2:
+                    tmp = tmp[1].split('###Output:')
+                    if len(tmp) >= 2:
+                        return tmp[0].strip().replace('\n', '\\')
+                    else:
+                        tmp = tmp[0].split('### Output:')
+                        if len(tmp) >= 2:
+                            return tmp[0].strip().replace('\n', '\\')
+                else:
+                    return None
+            
+        tmp_df['content'] = tmp_df['code'].apply(get_instruction)
+        def listify_label(row):
+            row['label'] = [row['label']]
+            return row
+        tmp_df['label'] = tmp_df['api_call']
+        tmp_df = tmp_df.drop(['code', 'provider', 'api_data'], axis=1).dropna()
+        # api_dataset = API_gorilla().process()
+        api_bench_dataset = datasets.Dataset.from_pandas(tmp_df)# .map(retrieve_oracle, remove_columns=['api_call', '__index_level_0__'], fn_kwargs={'docs':api_dataset})
+        api_bench_dataset = api_bench_dataset.remove_columns(["api_call", "__index_level_0__"]).cast_column('id', datasets.Value('string')).map(listify_label)
+        print('Done.')
+        return api_bench_dataset
+
+
+# class API_gorilla(Processor):
+
+#     def __init__(self, *args, **kwargs):
+#         self.dataset_name = 'API_gorilla'
+#         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+#     def process(self):
+
+#         api_files = {
+#             'huggingface_api.jsonl': 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/huggingface_api.jsonl',
+#             'torchhub.jsonl': 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/torchhub_api.jsonl',
+#             'tensorflowhub_api.jsonl': 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/tensorflowhub_api.jsonl'
+#         }
+
+#         def download_file(url):
+#             print(f"Downloading {url}...")
+#             response = requests.get(url)
+#             response.raise_for_status()  # Check if the request was successful
+#             data = []
+#             for line in response.text.strip().split('\n'):
+#                 data.append(json.loads(line))
+#             return data
+        
+#         def index(data):
+#             """
+#             data: list of python dictionaries
+#             """
+#             for i,_ in enumerate(data):
+#                 data[i]['id'] = i
+#                 if 'performance' in data[i]:
+#                     del data[i]['performance']
+#             return data
+        
+#         def convert_to_string(x):
+#             if isinstance(x, list):  # Check if the element is a list
+#                 if len(x) > 0:
+#                     if isinstance(x[0], dict):
+#                         return str(x)
+#                 return ','.join(x)   # Join the list elements with commas
+#             return str(x)                 # If it's not a list, return the original string
+
+#         api_data = []
+#         for _, url in api_files.items():
+#             api_data += download_file(url)
+#         print('Processing...')
+#         indexed_api = index(api_data) # create indices
+#         tmp_df = pd.DataFrame(data=indexed_api)
+#         tmp_df['api_arguments'] = tmp_df['api_arguments'].apply(convert_to_string)
+#         tmp_df['python_environment_requirements'] = tmp_df['python_environment_requirements'].apply(convert_to_string)
+#         tmp_df['example_code'] = tmp_df['example_code'].apply(convert_to_string)
+#         tmp_df['functionality'] = tmp_df['functionality'].apply(convert_to_string)
+#         api_dataset = datasets.Dataset.from_pandas(tmp_df).map(lambda row: {'content':'\n'.join([f"{key}: {value};" for key,value in row.items() if key != 'id'])})
+#         api_dataset = api_dataset.remove_columns([column for column in api_dataset.column_names if column not in ['id', 'content']]).cast_column('id', datasets.Value('string'))
+#         print('Done.')
+#         return api_dataset
+
+class API_gorilla(Processor):
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'API_gorilla_by_source'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        """
+        self.split should be one of ['huggingface', 'torchhub', 'tensorflowhub']
+        """
+
+        api_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/{self.split}_api.jsonl'
+
+        def download_file(url):
+            print(f"Downloading {url}...")
+            response = requests.get(url)
+            response.raise_for_status()  # Check if the request was successful
+            data = []
+            for line in response.text.strip().split('\n'):
+                data.append(json.loads(line))
+            return data
+        
+        def index(data):
+            """
+            data: list of python dictionaries
+            """
+            for i,_ in enumerate(data):
+                data[i]['id'] = i
+                if 'performance' in data[i]:
+                    del data[i]['performance']
+            return data
+        
+        def convert_to_string(x):
+            if isinstance(x, list):  # Check if the element is a list
+                if len(x) > 0:
+                    if isinstance(x[0], dict):
+                        return str(x)
+                return ','.join(x)   # Join the list elements with commas
+            return str(x)                 # If it's not a list, return the original string
+
+        api_data = download_file(api_file)
+        print('Processing...')
+        indexed_api = index(api_data) # create indices
+        tmp_df = pd.DataFrame(data=indexed_api)
+        tmp_df['api_arguments'] = tmp_df['api_arguments'].apply(convert_to_string)
+        tmp_df['python_environment_requirements'] = tmp_df['python_environment_requirements'].apply(convert_to_string)
+        tmp_df['example_code'] = tmp_df['example_code'].apply(convert_to_string)
+        tmp_df['functionality'] = tmp_df['functionality'].apply(convert_to_string)
+        api_dataset = datasets.Dataset.from_pandas(tmp_df).map(lambda row: {'content':'\n'.join([f"{key}: {value};" for key,value in row.items() if key != 'id'])})
+        api_dataset = api_dataset.remove_columns([column for column in api_dataset.column_names if column not in ['id', 'content']]).cast_column('id', datasets.Value('string'))
+        print('Done.')
+        return api_dataset
 
 
 class ProcessDatasets:

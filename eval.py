@@ -90,14 +90,14 @@ class Evaluate:
             from models.evaluators.vllm import LLM
             if len(vllm) == 0:
                 # corresponds to default LLMeval setting, results reported in the paper
-                full_name, short_name = "Upstage/SOLAR-10.7B-Instruct-v1.0", "LLMeval"             
+                full_name, short_name = "Upstage/SOLAR-10.7B-Instruct-v1.0", "LLMeval"
             elif len(vllm)==1:
                 full_name = vllm[0]
                 short_name = f"LLMeval_{full_name}"
             elif len(vllm)==2:
                 full_name = vllm[0]
-                short_name = f"LLMeval_{vllm[1]}"        
-            
+                short_name = f"LLMeval_{vllm[1]}"  
+
             model = LLM(full_name, batch_size=llm_batch_size, prompt=llm_prompt)
             eval_single(experiment_folder, folder, split, model, short_name)
         if llm_ollama is not None:

@@ -12,6 +12,6 @@ outputs/
 
 slurm_output/
 slurm_output_backup/
-testbergen/
+experiments/
 testbergen_backup/
 scripts/slurm_scripts/
