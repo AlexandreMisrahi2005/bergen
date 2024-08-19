@@ -7,6 +7,7 @@ tests/exp/
 tests/run/
 
 datasets/
+raw_datasets/
 indexes/
 outputs/
 
@@ -15,3 +16,7 @@ slurm_output_backup/
 experiments/
 testbergen_backup/
 scripts/slurm_scripts/
+
+generated_queries/
+
+*.DS_Store

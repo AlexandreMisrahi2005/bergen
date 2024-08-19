@@ -8,6 +8,7 @@ defaults:
     - dataset: ??
     - train: null
     - prompt: api
+    - query_generator: unfold_api_query  # null if don't want search query
 
 # main variables locating the local data folder and index
 run_name: null
@@ -20,7 +21,7 @@ experiments_folder: 'experiments/'
 # topk documents to retrieve, rerank and to use for generation
 retrieve_top_k: 25
 rerank_top_k: 25
-generation_top_k: 3
+generation_top_k: 5
 
 
 #

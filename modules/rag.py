@@ -131,7 +131,7 @@ class RAG:
         # Hydra way of instantiating generator object defined in config.
         self.generator = instantiate(generator_config.init_args, prompt=prompt) if generator_config != None else None
 
-        self.query_generator = GenerateQueries(**query_generator_config) if query_generator_config != None else None
+        self.query_generator = GenerateQueries(self.generator, **query_generator_config) if query_generator_config != None else None
         
                 # print RAG model
         print_rag_model(self, retriever_config, reranker_config, generator_config)
@@ -206,11 +206,13 @@ class RAG:
                 dataset_split
             )
             if not os.path.exists(gen_query_file) or self.overwrite_exp or self.overwrite_index:
+                print("Generating search queries...")
                 generated_queries = self.query_generator.eval(dataset['query'])
                 os.makedirs(self.generated_query_folder, exist_ok=True)
                 with open(gen_query_file, 'w') as fp: 
                     json.dump({"generated_queries": generated_queries}, fp)
             else:
+                print("Using pre-generated search queries...")
                 with open(gen_query_file, 'r') as fp: 
                     generated_queries = json.load(fp)["generated_queries"]
             dataset['query'] = dataset['query'].add_column("generated_query", generated_queries)
