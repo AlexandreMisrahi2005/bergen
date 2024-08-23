@@ -24,7 +24,7 @@ class LLM(Generator):
                 max_doc_len=100,
                 max_length=None,
                 prompt=None,
-                quantization=None
+                quantization=None,
                 ):
         Generator.__init__(self, model_name=model_name, batch_size=batch_size)
 

@@ -9,7 +9,7 @@ class GenerateQueries:
                  ):
         # instaniate model
         self.model = instantiate(init_args)
-        if init_args.model == "generator":
+        if "model" in init_args and init_args.model == "generator":
             if generator is None:
                 raise RuntimeError("No generator specified for getting search queries.")
             self.model.init_generator(generator)

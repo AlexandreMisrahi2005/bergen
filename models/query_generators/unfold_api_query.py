@@ -4,8 +4,8 @@ from tqdm import tqdm
 from datasets import Dataset
 
 class UnfoldAPIQuery(QueryGenerator):
-    def __init__(self, model="generator", prompt=""):
-        self.name = f"unfolded_query"
+    def __init__(self, name="unfolded_query", model="generator", prompt=""):
+        self.name = name
         self.model = model
         self.prompt = prompt
 

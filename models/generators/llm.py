@@ -25,6 +25,7 @@ class LLM(Generator):
                 max_length=None,
                 prompt=None,
                 quantization=None,
+                gguf_file=None,  # for gguf model format
                 attn_implementation="flash_attention_2"
                  ):
         
@@ -54,14 +55,14 @@ class LLM(Generator):
                 model_class = AutoModelForCausalLM
         print(tokenizer_name)
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, gguf_file=gguf_file)
         except:
 
             config_dict = os.path.join(tokenizer_name, 'config.json')
             with open(config_dict, 'r') as f:
                 config = json.load(f)
             tokenizer_name = config['_name_or_path']
-            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, gguf_file=gguf_file)
 
 
         self.tokenizer.padding_side = "left"
@@ -99,6 +100,7 @@ class LLM(Generator):
             self.model = model_class.from_pretrained(
                 self.model_name,
                 device_map='auto',
+                gguf_file=gguf_file,
             )
 
         # self.model.merge_and_unload()

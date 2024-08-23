@@ -133,7 +133,7 @@ class RAG:
 
         self.query_generator = GenerateQueries(self.generator, **query_generator_config) if query_generator_config != None else None
         
-                # print RAG model
+        # print RAG model
         print_rag_model(self, retriever_config, reranker_config, generator_config)
         
     def eval(self, dataset_split):
