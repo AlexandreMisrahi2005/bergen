@@ -7,8 +7,8 @@ defaults:
     - generator: null
     - dataset: ??
     - train: null
-    - prompt: api
-    - query_generator: unfold_api_query  # null if don't want search query
+    - prompt: empty
+    # - query_generator: null  # comment if don't want search query
 
 # main variables locating the local data folder and index
 run_name: null
