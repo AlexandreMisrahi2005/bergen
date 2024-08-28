@@ -17,6 +17,9 @@ import requests
 from functools import partial
 import pandas as pd
 
+from urllib.parse import unquote
+from bs4 import BeautifulSoup
+
 # Base class that every processor interhits from 
 class Processor(object):
     
@@ -1604,6 +1607,153 @@ class API_gorilla_TH(Processor):
         api_dataset = api_dataset.remove_columns([column for column in api_dataset.column_names if column not in ['id', 'content']]).cast_column('id', datasets.Value('string'))
         print('Done.')
         return api_dataset
+
+
+class CodeRAGBench_MBPP(Processor):
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = "CodeRAGBench_MBPP"
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        # load from the CodeRAGBench HF repo
+        hf_name = "code-rag-bench/mbpp"
+        dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc)[self.split]
+        dataset = dataset.rename_column("task_id", "id").rename_column("text", "content").rename_column("code", "label")
+        dataset = dataset.remove_columns([column for column in dataset.column_names if column not in ['id', 'content', 'label']])
+        return dataset
+
+class CodeRAGBench_database(Processor):
+    """All docs from CodeRAGBench paper -- programming solutions, github repos, stack-overflow, tutorials, library docs"""
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_database'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        
+        dataset1 = datasets.load_dataset("code-rag-bench/programming-solutions", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text"}).select_columns(['content'])
+        dataset2 = datasets.load_dataset("code-rag-bench/online-tutorials", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text"}).select_columns(['content'])
+        dataset3 = datasets.load_dataset("code-rag-bench/library-documentation", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"doc_content", "title_colname":"doc_id"}).select_columns(['content'])
+        dataset4 = datasets.load_dataset("code-rag-bench/stackoverflow-posts", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+        dataset5 = datasets.load_dataset("code-rag-bench/github-repos-python", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+        dataset6 = datasets.load_dataset("code-rag-bench/github-repos", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+
+        # concat and create ids
+        dataset = datasets.concatenate_datasets([dataset1, dataset2, dataset3, dataset4, dataset5, dataset6]).map(lambda _, idx: {"id": idx}, with_indices=True)
+
+        return dataset
+
+
+class SyllabusQA(Processor):
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = "SyllabusQA"
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        url = "https://raw.githubusercontent.com/umass-ml4ed/SyllabusQA/main/data/dataset_split/test.csv"
+        df = pd.read_csv(url)
+        def merge_syllabusname_question(row):
+            row['content'] = row['syllabus_name'] + ": " + row['question']
+            return row
+        dataset = datasets.Dataset.from_pandas(df).map(merge_syllabusname_question).rename_column("answer", "label").remove_columns([
+            'answer_span_1',
+            'answer_span_2',
+            'answer_span_3',
+            'answer_span_4',
+            'answer_span_5',
+            'reasoning_step_1',
+            'reasoning_step_2',
+            'reasoning_step_3',
+            'reasoning_step_4',
+            'reasoning_step_5',
+            ])
+        return dataset
+    
+class SyllabusQA_syllabi(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = "SyllabusQA_syllabi"
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        """
+        Important notice: 
+        Due to requests feature, sometimes this function fails with ```datasets.arrow_writer.SchemaInferenceError: Please pass `features` or at least one example when writing data```
+        This happens when the request fails to retrieve all the txt files (and retrieves none of them) resulting in an empty Dataset
+        Just run the function until it works... BUT make sure to remove the directory SyllabusQA_syllabi_train created in datasets/
+        """
+
+        url = "https://github.com/umass-ml4ed/SyllabusQA/tree/main/syllabi/syllabi_redacted/text"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # parse the HTML to find all .txt file links
+        base_url = "https://raw.githubusercontent.com/umass-ml4ed/SyllabusQA/main/syllabi/syllabi_redacted/text/"
+        files = []
+
+        # get file links
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            if href.endswith('.txt'):
+                file_name = href.split('/')[-1]  # Get file name
+                files.append(base_url + file_name)
+        
+        # duplicates
+        files = list(set(files))
+        print(len(files), 'files found.')
+
+        # download each .txt
+        syllabi = []
+        for file_url in files:
+            file_name = file_url.split('/')[-1]
+            response = requests.get(file_url)
+            content = response.content.decode('MacRoman')
+            syllabi.append({'file_name': file_name, 'content': content})
+            print(f"Downloaded {file_name}.")
+        print("Done.")
+
+        def chunk_text(text, title, max_size=1000, overlap=200):
+            """
+            Chunks the given text into parts with a maximum size and overlap, prepending the title to each chunk.
+            
+            Args:
+            - text: The text to chunk.
+            - title: The title of the syllabus to prepend to each chunk.
+            - max_size: Maximum size of each chunk (default is 1000 characters, same as in https://arxiv.org/pdf/2403.14666).
+            - overlap: Overlap between adjacent chunks (default is 200 characters, same as in https://arxiv.org/pdf/2403.14666).
+            
+            Returns:
+            - A list of dictionaries with chunk 'id' and 'content' keys.
+            """
+            chunks = []
+            start = 0
+            chunk_id = 0
+            while start < len(text):
+                end = start + max_size
+                chunk = text[start:end]
+                chunk = title + ": " + chunk  # Prepend the title
+                chunks.append({'id': f"{title}_{chunk_id}", 'content': chunk})
+                start = end - overlap
+                chunk_id += 1
+
+            return chunks
+
+        # chunk
+        all_chunks = []
+        for file in syllabi:
+            title, text = unquote(file['file_name'].split('/')[-1].strip('.txt')), file['content']
+            chunks = chunk_text(text, title)
+            all_chunks.extend(chunks)
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks))
+        return dataset
 
 
 
