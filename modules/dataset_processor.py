@@ -1607,6 +1607,20 @@ class API_gorilla_TH(Processor):
         api_dataset = api_dataset.remove_columns([column for column in api_dataset.column_names if column not in ['id', 'content']]).cast_column('id', datasets.Value('string'))
         print('Done.')
         return api_dataset
+    
+
+class CodeRAGBench_HumanEval(Processor):
+
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = "CodeRAGBench_HumanEval"
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    
+    def process(self):
+        # load from the CodeRAGBench HF repo
+        hf_name = "code-rag-bench/humaneval"
+        dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc)[self.split]
+        dataset = dataset.rename_column("task_id", "id").rename_column("prompt", "content").rename_column("canonical_solution", "label")
+        return dataset
 
 
 class CodeRAGBench_MBPP(Processor):

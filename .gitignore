@@ -5,6 +5,7 @@ tests/dataset/
 tests/index/
 tests/exp/
 tests/run/
+wandb/
 
 datasets/
 raw_datasets/
