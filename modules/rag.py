@@ -13,6 +13,7 @@ import time
 import shutil
 import os 
 from tqdm import tqdm
+import wandb
 import json
 from hydra.utils import instantiate
 from utils import (
@@ -479,10 +480,12 @@ class RAG:
 
         total_batch_size = self.training_config.trainer.per_device_train_batch_size * torch.cuda.device_count()
         total_steps = len(train_test_datasets['train']) // total_batch_size
-        num_saving_steps = 5
+        num_saving_steps = 10
         eval_steps =  max(total_steps// num_saving_steps, 1)
         save_steps = max(total_steps  // num_saving_steps, 1)
-        logging_steps = max(total_steps // 5, 1)
+        logging_steps = max(total_steps // 10, 1)
+
+        wandb.init(project="ft_nq", name=self.run_name)
 
         args = TrainingArguments(
             run_name=self.run_name,
@@ -510,3 +513,4 @@ class RAG:
         self.generator.model = trainer.model
         move_finished_experiment(self.experiment_folder)
         self.experiment_folder = get_finished_experiment_name(self.experiment_folder)
+        wandb.finish()

@@ -7,7 +7,7 @@ defaults:
     - generator: null
     - dataset: ??
     - train: null
-    - prompt: empty
+    - prompt: coderagbench_humaneval
     # - query_generator: null  # comment if don't want search query
 
 # main variables locating the local data folder and index

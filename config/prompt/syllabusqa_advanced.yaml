@@ -1,0 +1,4 @@
+system: "You are a teaching assistant. Answer questions from students on course logistics."
+user: f"Here are snippets (documents) from various course syllabi which could be helpful in answering the question:\n{docs}\n Select the snippets relevant to the question's course syllabi.\n### The question is:\ {question}\n### The answer is:\ "
+system_without_docs: "You are a teaching assistant. Answer questions from students on course logistics."
+user_without_docs: f"### The question is:\ {question}"
