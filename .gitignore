@@ -1,4 +1,7 @@
 experiments/
+datasets/
+indexes/
+datasets/
 __pycache__
 *.swp
 tests/dataset/
