@@ -41,7 +41,12 @@ def load_embeddings(index_path):
             emb_chunk = torch.load(emb_file)
             embeds.append(emb_chunk)
         embeds = torch.concat(embeds)
-    except:
+    except RuntimeError:
+        # RuntimeError: torch.cat(): expected a non-empty list of Tensors 
+        # --> embeddings were not found
+        raise RuntimeError("No embeddings found. Check .trec run file name if you are running oracle provenance.")
+    except Exception as e:
+        print("Exception occured: ", e)
         raise IOError(f'Embedding index corrupt. Please delete folder "{index_path}" and run again.')
     return embeds
 
@@ -101,6 +106,8 @@ def prepare_dataset_from_ids(dataset, q_ids, d_ids, multi_doc=False, query_embed
         dataset_dict.update({'label': dataset['query']['label'] } if 'label' in dataset['query'].features else {})
         dataset_dict.update({'ranking_label': dataset['query']['ranking_label']} if 'ranking_label' in dataset['query'].features else {})
     else:
+        assert isinstance(d_ids[0][0], str), f"{d_ids[0]}"
+        assert isinstance(list(dataset['doc'].id2index.keys())[0], str), "Dataset id type is not string, real index retrieval will fail and retrieve nothing. Please convert to string in dataset_processor!"
         dataset_dict = defaultdict(list)
         # get labels
         labels = get_by_id(dataset['query'], q_ids, 'label')

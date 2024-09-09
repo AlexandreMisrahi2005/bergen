@@ -13,7 +13,7 @@ HUMAN_EVAL = os.path.join("datasets", "CodeRAGBench_HumanEval_train")
 
 
 def read_problems(evalset_file: str = HUMAN_EVAL) -> Dict[str, Dict]:
-    return {row['id']: row for row in datasets.load_from_disk(evalset_file) if row['id'] in ['HumanEval/23', 'HumanEval/83']}
+    return {row['id']: row for row in datasets.load_from_disk(evalset_file)}
 
     # return {task["task_id"]: task for task in stream_jsonl(evalset_file)}
 
@@ -23,8 +23,13 @@ def stream_problem_labels(evalset_file: str = HUMAN_EVAL) -> Iterable[Dict]:
     """
     dataset = datasets.load_from_disk(evalset_file)
     for row in dataset:
-        if row['id'] in ['HumanEval/23', 'HumanEval/83']:
-            yield row['label']
+        if isinstance(row['label'], list):
+            assert len(row['label']) == 1
+            yield {"q_id":row['id'], 
+                "response":row['label'][0]}
+        elif isinstance(row['label'], str):
+            yield {"q_id":row['id'], 
+                    "response":row['label']}
 
 
 def stream_json(filename: str) -> Iterable[Dict]:

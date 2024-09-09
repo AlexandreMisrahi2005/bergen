@@ -1,9 +1,8 @@
 """
-Copied from https://github.com/openai/human-eval/blob/master/human_eval/execution.py
+Modified from https://github.com/openai/human-eval/blob/master/human_eval/execution.py
 """
 
-from typing import Optional, Callable, Dict
-import ast
+from typing import Optional, Dict
 import contextlib
 import faulthandler
 import io
@@ -12,36 +11,6 @@ import multiprocessing
 import platform
 import signal
 import tempfile
-import re
-
-
-def match_code(text: str, problem: Dict):
-    """
-    Given text (LLM answer), find the code in the LLM answer. 
-
-    :param problem: used to get the entry point (i.e., the signature of the target function)
-    """
-    regex1 = re.compile(rf"```python\n"
-                               rf"def {problem['entry_point']}(?:.*?):\n"
-                               rf"    \"\"\"(?:.*?)\"\"\"\n"
-                               rf"(.*?)", re.DOTALL
-                            )
-    
-    ### Add as many regex as you find useful
-
-    # regex2 = re.compile(rf"```python\n"
-    #                            rf"def {problem['entry_point']}(?:.*?):\n"
-    #                            rf"    \"\"\"(?:.*?)\"\"\"\n"
-    #                            rf"(.*?)", re.DOTALL
-    #                         )
-
-    match_completion = regex1.findall(text)
-    if len(match_completion) >= 1:
-        found_completion = match_completion[0]
-    else:
-        found_completion = '    pass\n'   # if nothing is found treat the prediction as an undefined function
-    return found_completion
-
 
 def check_correctness(problem: Dict, completion: str, timeout: float,
                       completion_id: Optional[int] = None) -> Dict:
@@ -67,12 +36,9 @@ def check_correctness(problem: Dict, completion: str, timeout: float,
             # Disable functionalities that can make destructive changes to the test.
             reliability_guard()
 
-            # Find python code in the LLM output.
-            found_completion = match_code(completion, problem)
-
             # Construct the check program and run it.
             check_program = (
-                problem["content"] + found_completion + "\n" +
+                problem["content"] + completion + "\n" +
                 problem["test"] + "\n" +
                 f"check({problem['entry_point']})"
             )

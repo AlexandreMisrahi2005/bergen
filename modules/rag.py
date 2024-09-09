@@ -151,9 +151,7 @@ class RAG:
 
         dataset = self.datasets[dataset_split]
         query_dataset_name = self.datasets[dataset_split]['query'].name
-
-        if self.retriever != None or self.reranker !=  None:
-            doc_dataset_name = self.datasets[dataset_split]['doc'].name
+        doc_dataset_name = self.datasets[dataset_split]['doc'].name
 
         # query generation (or copying in case query_generator="copy")
         if self.retriever != None:
@@ -517,10 +515,15 @@ class RAG:
         
         # split train into train and test
         train_test_datasets = gen_dataset.train_test_split(self.training_config.test_size_ratio, seed=42)
+        # print('train_test_datasets: ', train_test_datasets)
+        # print("example row")
+        # print(train_test_datasets['train'][0])
 
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
-        train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=False)
+        train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True) # .select(range(128))
+        # print("len(train_test_datasets['train']): ", len(train_test_datasets['train']))
+        # print("len(train_test_datasets['test']): ", len(train_test_datasets['test']))
 
         # We keep some data to log in wandb, from the test set:
         call_back_data = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=False)
@@ -551,6 +554,12 @@ class RAG:
         save_steps = max(total_steps  // num_saving_steps, 1)
         logging_steps = max(total_steps // 10, 1)
 
+        # print("torch.cuda.device_count() =", torch.cuda.device_count())
+        # print("total_batch_size =", total_batch_size)
+        # print("total_steps =", total_steps)
+        # print("eval model every", eval_steps, "training steps")
+        # print("saving model every", save_steps, "training steps")
+
         wandb.init(project="ft_nq", name=self.run_name)
 
         args = TrainingArguments(
@@ -558,7 +567,7 @@ class RAG:
             output_dir=f'{self.experiment_folder}/train/',
             **self.training_config.trainer,
             evaluation_strategy="steps",
-            eval_steps=eval_steps, 
+            eval_steps=eval_steps,
             save_steps=save_steps,
             logging_steps=logging_steps,
             load_best_model_at_end=True,

@@ -123,6 +123,7 @@ def match_single(prediction, ground_truth):
 
 
 def match_score(predictions, references):
+    assert isinstance(references[0], list), "Labels are strings, but need to be list of strings (even if only one label)"
     return np.mean([max([match_single(prediction, gt) for gt in ground_truths]) for ground_truths, prediction in zip(references, predictions)])
 
 

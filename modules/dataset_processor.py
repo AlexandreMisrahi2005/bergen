@@ -1064,6 +1064,10 @@ class CodeRAGBench_HumanEval(Processor):
         hf_name = "code-rag-bench/humaneval"
         dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc)[self.split]
         dataset = dataset.rename_column("task_id", "id").rename_column("prompt", "content").rename_column("canonical_solution", "label")
+        def listify_label(row):
+            row['label'] = [row['label']]
+            return row
+        dataset = dataset.map(listify_label)
         return dataset
 
 
@@ -1079,6 +1083,10 @@ class CodeRAGBench_MBPP(Processor):
         dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc)[self.split]
         dataset = dataset.rename_column("task_id", "id").rename_column("text", "content").rename_column("code", "label")
         dataset = dataset.remove_columns([column for column in dataset.column_names if column not in ['id', 'content', 'label']])
+        def listify_label(row):
+            row['label'] = [row['label']]
+            return row
+        dataset = dataset.map(listify_label)
         return dataset
 
 class CodeRAGBench_database(Processor):
@@ -1105,10 +1113,100 @@ class CodeRAGBench_database(Processor):
         dataset6 = datasets.load_dataset("code-rag-bench/github-repos", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
 
         # concat and create ids
-        dataset = datasets.concatenate_datasets([dataset1, dataset2, dataset3, dataset4, dataset5, dataset6]).map(lambda _, idx: {"id": idx}, with_indices=True)
+        dataset = datasets.concatenate_datasets([dataset1, dataset2, dataset3, dataset4, dataset5, dataset6]).map(lambda _, idx: {"id": str(idx)}, with_indices=True)
 
         return dataset
 
+class CodeRAGBench_programming_solutions(Processor):
+    """Contains oracle docs for HumanEval and MBPP"""
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_programming_solutions'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/programming-solutions", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text"}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
+    
+class CodeRAGBench_online_tutorials(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_online_tutorials'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/online-tutorials", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text"}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
+    
+class CodeRAGBench_library_documentation(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_library_documentation'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/library-documentation", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"doc_content", "title_colname":"doc_id"}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
+    
+class CodeRAGBench_stackoverflow(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_stackoverflow'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/stackoverflow-posts", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
+
+class CodeRAGBench_gitrepospython(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_gitrepospython'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/github-repos-python", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
+    
+class CodeRAGBench_gitrepos(Processor):
+    def __init__(self, *args, **kwargs):
+        self.dataset_name = 'CodeRAGBench_gitrepos'
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+    def process(self):
+        def cat_title_content(x, content_colname="content", title_colname="title"):
+            if title_colname is None:
+                x["content"] = f"{x[content_colname]}"
+            else:
+                x["content"] = f"{x[title_colname]}: {x[content_colname]}"
+            return x
+        dataset = datasets.load_dataset("code-rag-bench/github-repos", num_proc=self.num_proc)[self.split].map(cat_title_content, fn_kwargs={"content_colname":"text", "title_colname":None}).select_columns(['content'])
+        dataset = dataset.map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        return dataset
 
 class SyllabusQA(Processor):
 
@@ -1134,6 +1232,10 @@ class SyllabusQA(Processor):
             'reasoning_step_4',
             'reasoning_step_5',
             ])
+        def listify_label(row):
+            row['label'] = [row['label']]
+            return row
+        dataset = dataset.map(listify_label)
         return dataset
     
 class SyllabusQA_syllabi(Processor):
