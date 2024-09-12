@@ -35,9 +35,10 @@ def parse_args():
         description="Evaluate LLM outputs"
     )
     parser.add_argument(
-        'file_path',
+        'file_paths',
         type=str,
-        help='Path to the prediction JSON file'
+        nargs='+',
+        help='Path(s) to the prediction JSON file(s)'
     )
     parser.add_argument(
         '--labels-check',
@@ -51,8 +52,34 @@ def main():
     Main function to handle command-line arguments and invoke the entry point.
     """
     args = parse_args()
-    entry_point(args.file_path, labels_check=args.labels_check)
+    for file_path in args.file_paths:
+        print(file_path)
+        entry_point(file_path, labels_check=args.labels_check)
     return 0
 
 if __name__ == "__main__":
     sys.exit(main())
+
+"""
+python3 scripts/evaluate_code/evaluate_functional_correctness.py\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_commandr35b_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_commandr35b_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_commandr35b_splade_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_mixtral_moe_7b_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_mixtral_moe_7b_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_mixtral_moe_7b_splade_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_genphi3mini_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_genphi3mini_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_genphi3mini_splade_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_solar_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_solar_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_solar_splade_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama2_7b_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama2_7b_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama2_7b_splade_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama3_8b_bge_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama3_8b_retromae_top5/eval_dev_out.json\
+    experiments/experiments_coderagbench/humaneval/independent_datastore_gen_vllmllama3_8b_splade_top5/eval_dev_out.json\
+    
+
+"""

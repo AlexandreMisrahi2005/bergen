@@ -17,10 +17,9 @@ import re
 
 def print_results(regexes_passed, results):
 
-    print("printing some statistics for debugging...")
-
     # Initialize a dictionary to store statistics
-    regex_stats = {i: {"passed_count": 0, "total_count": 0} for i in range(11)}
+    regex_stats = {i: {"passed_count": 0, "total_count": 0} for i in range(20)}
+    regex_stats_syntaxerrors = {i: 0 for i in range(20)}
     exec_output_stats = {"syntax": 0, "unit tests": 0, "other": 0, "passed": 0}
 
     # Combine dictionaries and calculate statistics
@@ -33,6 +32,7 @@ def print_results(regexes_passed, results):
 
         if result.startswith("failed: SyntaxError"):
             exec_output_stats["syntax"] += 1
+            regex_stats_syntaxerrors[regex_passed] += 1
         elif result.startswith("failed: AssertionError"):
             exec_output_stats["unit tests"] += 1
         elif result == "passed":
@@ -47,7 +47,7 @@ def print_results(regexes_passed, results):
         total = counts["total_count"]
         true_count = counts["passed_count"]
         if total > 0:  # Only print if there is at least one boolean
-            print(f"Regex pattern {value}:      {true_count} / {total} generations are correct")
+            print(f"Regex pattern {value}:      {true_count} / {total} generations are correct       {regex_stats_syntaxerrors[value]} syntax errors occured")
     print()
     print("Error types:")
     print(exec_output_stats)
@@ -86,28 +86,119 @@ def match_code(text: str, problem: Dict):
     # found_completion = '    pass\n'   # if nothing is found treat the prediction as an undefined function
     # return 0,found_completion
 
-    try:
-        return 0, text.split("```python\n")[1].split("```")[0]
-    except IndexError:
-        try:
-            return 5, text.split("```Python\n")[1].split("```")[0]
-        except IndexError:
-            try:
-                return 2, text.split("```python\n")[1]
-            except IndexError:
-                try:
-                    return 4, text.split("```\n")[1].split("```")[0]
-                except IndexError:
-                    if text.startswith("\ndef ") or text.startswith("def") or text.startswith("\nfrom ") or text.startswith("from"):
-                        return 3, text
-                    if "from" in text:
-                        return 6, text[text.index("from"):]
-                    if "def" in text:
-                        return 7, text[text.index("def"):]
-                    if text.startswith("    "):
-                        return 8, problem['content'] + text
-                    print("[Looking for code in LLM answer...] No code found for task id =", problem["id"])
-                    return 1, text
+
+
+    # function_name = problem['entry_point']
+
+    # pattern = rf"((?:from\s+\S+\s+import\s+\S+|import\s+\S+)[\s\S]*?)\n+def {function_name}\(.*\):\s*(\n(    .*)*)"
+
+    # # Search for the pattern in the text
+    # match = re.search(pattern, text)
+
+    # if match:
+    #     # Return the matched imports and the full function definition
+    #     return 0, match.group(0)
+    # else:
+    #     if text.strip().startswith("return"):
+    #         return 2, problem['content'] + '\n    ' + text.strip()
+    #     return 1, text
+
+
+    if "```python\n" in text:
+        if "```" in text.split("```python\n")[1]:
+            # "```python def ret_None():\n    return None```"
+            assert isinstance(text, str), text
+            return 0, text.split("```python\n")[1].split("```")[0]
+        # "```python def ret_None():\n    return None"
+        assert isinstance(text, str), text
+        return 2, text.split("```python\n")[1]
+    
+    elif "```Python\n" in text and "```" in text.split("```Python\n")[1]:
+        # "```Python def ret_None():\n    return None```"
+        assert isinstance(text, str), text
+        return 5, text.split("```Python\n")[1].split("```")[0]
+    if "```" in text:
+        if len(text.split("```")) >= 3:
+            # "```code```"
+            text = text.split("```")[1]
+            if text.strip().startswith("return"):
+                # "```\n    return None```"
+                text = problem['content'] + '\n    ' + text.strip()
+            assert isinstance(text, str), text
+            return 4, text
+        else:
+            assert isinstance(text, str), text
+            return 9, text
+    else:
+        # "    return None"
+        if text.startswith("    ") or text.startswith("\n    ") or text.startswith("\n\n    "):
+            assert isinstance(text, str), text
+            return 12, problem["content"] + text
+        if text.strip().startswith("def") or text.strip().startswith("from"):
+            if len(text.split("\n\n")) > 2:
+                if len(text.split('"""')) >= 3:
+                    if "\n\n" in text.split('"""')[2]:
+                        text = '"""'.join(text.split('"""')[:2] + ['\n    ' + text.split('"""')[2].strip().split("\n\n")[0]])
+                        assert isinstance(text, str), text
+                        return 8, text
+                    else:
+                        text = text
+                        assert isinstance(text, str), text
+                        return 10, text
+                elif "\n\n" in text:
+                    # text = text.split("\n\n")[0]
+                    # cut the text after the last occurence of "return"
+                    # last_return_pos = text.rfind("return")
+                    # if last_return_pos != -1:
+                    #     text_after_return = text[last_return_pos:]
+                    #     if "\n\n" in text_after_return:
+                    #         text = text[:last_return_pos] + text_after_return.split("\n\n")[0]
+                    #         return 12, text
+                    assert isinstance(text, str), text
+                    return 11, text
+            else:
+                text = text.split("\n\n")[0]
+            assert isinstance(text, str), text
+            return 3, text
+        if "from" in text:
+            assert isinstance(text, str), text
+            return 6, text[text.index("from"):]
+        if "def" in text:
+            assert isinstance(text, str), text
+            return 7, text[text.index("def"):]
+        print("[Looking for code in LLM answer...] No code found for task id =", problem["id"])
+        assert isinstance(text, str), text
+        return 1, text
+    
+    
+
+    # try:
+    #     return 0, text.split("```python\n")[1].split("```")[0]
+    # except IndexError:
+    #     try:
+    #         return 5, text.split("```Python\n")[1].split("```")[0]
+    #     except IndexError:
+    #         try:
+    #             return 2, text.split("```python\n")[1]
+    #         except IndexError:
+    #             try:
+    #                 text = text.split("```\n")[1].split("```")[0]
+    #                 if text.strip().startswith("return"):
+    #                     text = problem['content'] + '\n    ' + text.strip()
+    #                 return 4, text
+    #             except IndexError:
+    #                 if text.strip().startswith("def") or text.strip().startswith("from"):
+    #                     if "\n\n" in text:
+    #                         text = text.split
+    #                     return 3, text
+    #                 if "from" in text:
+    #                     return 6, text[text.index("from"):]
+    #                 if "def" in text:
+    #                     return 7, text[text.index("def"):]
+    #                 if text.startswith("    "):
+    #                     return 8, problem['content'] + text
+    #                 print("[Looking for code in LLM answer...] No code found for task id =", problem["id"])
+    #                 return 1, text
 
 
 def estimate_pass_at_k(
