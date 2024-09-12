@@ -1,0 +1,30 @@
+train:
+    doc: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA_docs
+            split: "train"
+    
+    query: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA
+            split: "train"
+dev:
+    doc: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA_docs
+            split: "validation"
+    
+    query: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA
+            split: "validation"
+test:
+    doc: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA_docs
+            split: "test"
+    
+    query: 
+        init_args:
+            _target_: modules.dataset_processor.NarrativeQA
+            split: "test"

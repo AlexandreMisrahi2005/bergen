@@ -1316,6 +1316,69 @@ class SyllabusQA_syllabi(Processor):
         return dataset
 
 
+class NarrativeQA(Processor):
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'NarrativeQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("deepmind/narrativeqa", num_proc=self.num_proc)[self.split]
+
+        def map_fn(example):
+            example["id"] = example["document"]["id"]
+            example['content'] = f"{example['document']['summary']['title']}: {example['question']['text'].lower()}"
+            example['label'] = [example["answers"][1]["text"]]
+            return example
+        
+        ds = ds.map(map_fn, num_proc=self.num_proc)
+        return ds
+
+class NarrativeQA_docs(Processor):
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'NarrativeQA_docs'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("deepmind/narrativeqa", num_proc=self.num_proc)[self.split]
+
+        def chunk_text(text, chunk_size=100, overlap=20):
+            # chunk according to words
+            tokens = text.split()
+            num_tokens = len(tokens)
+            
+            chunks = []
+            for i in range(0, num_tokens, chunk_size - overlap):
+                chunk_tokens = tokens[i:i + chunk_size]
+                
+                # If this is the last chunk and there's still some remaining text, capture it fully
+                if i + chunk_size >= num_tokens:
+                    chunk_tokens = tokens[i:]
+                    
+                chunk = ' '.join(chunk_tokens)
+                chunks.append(chunk)
+                
+                if len(chunk_tokens) < chunk_size:
+                    break
+            return chunks
+                
+        new_data = {"id": [], "content": []}
+        ids_seen = set()
+        for row in ds:
+            doc_id = row["document"]["id"]
+            if doc_id in ids_seen:
+                continue
+            ids_seen.add(doc_id)
+            text = row["document"]["text"]
+            chunks = chunk_text(text, chunk_size=100, overlap=20)
+            for chunk_idx, chunk in enumerate(chunks):
+                new_id = f"{doc_id}_{chunk_idx + 1}"
+                new_data["id"].append(new_id)
+                chunk = f"{row['document']['summary']['title']}: {chunk}"
+                new_data["content"].append(chunk)
+        chunked_dataset = datasets.Dataset.from_dict(new_data)
+                
+        return chunked_dataset
+
 
 class ProcessDatasets:
                 
