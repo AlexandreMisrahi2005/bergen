@@ -12,6 +12,9 @@ dev:
     doc: 
         init_args:
             _target_: modules.dataset_processor.NarrativeQA_docs
+            type: 'summary' # summary or book, defaults to book
+            chunk_size: 1000    # ignored for summary
+            overlap: 200        # ignored for summary
             split: "validation"
     
     query: 

@@ -1335,7 +1335,17 @@ class NarrativeQA(Processor):
 
 class NarrativeQA_docs(Processor):
     def __init__(self, *args, **kwargs):
-        dataset_name = 'NarrativeQA_docs'
+        self.chunk_size, self.overlap, self.type = None, None, None
+        if "type" in kwargs:
+            self.type = kwargs["type"]
+            del kwargs['type']
+        if "chunk_size" in kwargs and "overlap" in kwargs:
+            self.chunk_size = kwargs["chunk_size"]
+            self.overlap = kwargs["overlap"]
+            del kwargs['chunk_size']
+            del kwargs['overlap']
+        dataset_name = f"NarrativeQA_docs_CHS_{self.chunk_size}_OVLP_{self.overlap}" if self.chunk_size is not None and self.overlap is not None else "NarrativeQA_docs"
+        dataset_name = "NarrativeQA_docs_summary" if self.type == "summary" else "NarrativeQA_docs"
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
@@ -1368,13 +1378,19 @@ class NarrativeQA_docs(Processor):
             if doc_id in ids_seen:
                 continue
             ids_seen.add(doc_id)
-            text = row["document"]["text"]
-            chunks = chunk_text(text, chunk_size=100, overlap=20)
-            for chunk_idx, chunk in enumerate(chunks):
-                new_id = f"{doc_id}_{chunk_idx + 1}"
+            if self.type is not None and self.type == "summary":
+                text = f"{row['document']['summary']['title']}: {row['document']['summary']['text']}"
+                new_id = f"{doc_id}"
                 new_data["id"].append(new_id)
-                chunk = f"{row['document']['summary']['title']}: {chunk}"
-                new_data["content"].append(chunk)
+                new_data["content"].append(text)
+            else:
+                text = row["document"]["text"]
+                chunks = chunk_text(text, chunk_size=self.chunk_size, overlap=self.overlap)
+                for chunk_idx, chunk in enumerate(chunks):
+                    new_id = f"{doc_id}_{chunk_idx + 1}"
+                    new_data["id"].append(new_id)
+                    chunk = f"{row['document']['summary']['title']}: {chunk}"
+                    new_data["content"].append(chunk)
         chunked_dataset = datasets.Dataset.from_dict(new_data)
                 
         return chunked_dataset
