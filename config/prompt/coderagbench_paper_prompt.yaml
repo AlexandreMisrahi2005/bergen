@@ -1,4 +1,0 @@
-system: "Instruction: Continue writing the code, using the provided code snippets. example_user: Continue writing the following code:\n\n```\ndef return_none():\n``` example_assistant: ```\n    return None\n```"
-user: f"Background code snippets:\n{docs}\n\nContinue writing the following code:\n\n```\n{question}\n```"
-system_without_docs: "Instruction: Continue writing the code. example_user: Continue writing the following code:\n\n```\ndef return_none():\n``` example_assistant: ```\n    return None\n```"
-user_without_docs: f"Continue writing the following code:\n\n```\n{question}\n```"

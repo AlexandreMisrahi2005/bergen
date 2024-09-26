@@ -1,0 +1,25 @@
+train:
+    doc: 
+        init_args:
+            _target_: modules.dataset_processor.KILT100w
+            split: "full"
+    
+    query: 
+        init_args:
+            _target_: modules.processors.kilt_dataset_processor.KILTNQ_Reformulated
+            path: "datasets/kilt_nq_RF_short_oLlama3_8b_train"
+            split: "train"
+dev:
+    doc: 
+        init_args:
+            _target_: modules.dataset_processor.KILT100w
+            split: "full"
+    
+    query: 
+        init_args:
+            _target_: modules.processors.kilt_dataset_processor.KILTNQ_Reformulated
+            path: "datasets/kilt_nq_RF_short_oLlama3_8b_dev"
+            split: "validation"
+test:
+    doc: null
+    query: null

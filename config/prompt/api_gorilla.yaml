@@ -1,4 +1,0 @@
-system: "You are an helpful AI system. Your task is to give API recommendations to users. Use the provided API documentation provided after the question."
-user: f"### User:\ {question}\n Use this API documentation for reference:\ {docs}"
-system_without_docs: "You are an helpful AI system. Your task is to give API recommendations to users."
-user_without_docs: f"{question}"

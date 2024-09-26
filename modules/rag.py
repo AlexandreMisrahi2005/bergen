@@ -521,7 +521,7 @@ class RAG:
 
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
-        train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True) # .select(range(128))
+        train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True) # set training=True to have labels (if False, eval loss will be None)
         # print("len(train_test_datasets['train']): ", len(train_test_datasets['train']))
         # print("len(train_test_datasets['test']): ", len(train_test_datasets['test']))
 
@@ -549,10 +549,10 @@ class RAG:
 
         total_batch_size = self.training_config.trainer.per_device_train_batch_size * torch.cuda.device_count()
         total_steps = len(train_test_datasets['train']) // total_batch_size
-        num_saving_steps = 10
+        num_saving_steps = self.training_config.num_saving_steps
         eval_steps =  max(total_steps// num_saving_steps, 1)
         save_steps = max(total_steps  // num_saving_steps, 1)
-        logging_steps = max(total_steps // 10, 1)
+        logging_steps = max(total_steps // num_saving_steps, 1)
 
         # print("torch.cuda.device_count() =", torch.cuda.device_count())
         # print("total_batch_size =", total_batch_size)
@@ -560,7 +560,13 @@ class RAG:
         # print("eval model every", eval_steps, "training steps")
         # print("saving model every", save_steps, "training steps")
 
-        wandb.init(project="ft_nq", name=self.run_name)
+        if self.training_config.trainer.report_to == "wandb":
+            import wandb
+            wandb_api_key = os.environ.get("WANDB_API_KEY")
+            if wandb_api_key is None:
+                raise RuntimeError("please set environment variable WANDB_API_KEY to log into wandb. Otherwise disable wandb by setting training config trainer.report_to: 'none' ")
+            wandb.login(key=wandb_api_key)
+            wandb.init(project=self.training_config.wandb_project_name, name=self.run_name)
 
         args = TrainingArguments(
             run_name=self.run_name,
@@ -588,4 +594,5 @@ class RAG:
         self.generator.model = trainer.model
         move_finished_experiment(self.experiment_folder)
         self.experiment_folder = get_finished_experiment_name(self.experiment_folder)
-        wandb.finish()
+        if self.training_config.trainer.report_to == "wandb":
+            wandb.finish()

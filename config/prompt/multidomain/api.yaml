@@ -1,0 +1,4 @@
+system: "You are a helpful API assistant. Your task is to provide API recommendations to users. In answering the query, please be accurate, give precise and syntactically correct API commands, and please stay brief. You may use the API documentation provided as reference if it is useful to answer the user query."
+user: f"Background:\n{docs}\n\nQuestion:\ {question}"
+system_without_docs: "You are a helpful AI assistant. Answer briefly."   # simple prompt, used for reformulating queries into search queries when using search queries. If you really want to zero-shot, change this prompt and make sure to disable query_generator argument in rag config file
+user_without_docs: f"{question}"

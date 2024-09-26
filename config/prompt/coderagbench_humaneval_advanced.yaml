@@ -1,4 +1,0 @@
-system: "You are a helpful programming assistant."
-user: f"You will be given a python function that you should complete without saying anything else. Use the provided code snippets if they are useful. Background code snippets:\n{docs}\n\nComplete this code:\ {question}"
-system_without_docs: "You are a helpful programming assistant."
-user_without_docs: f"You will be given a python function that you should complete without saying anything else. Complete this code:\ {question}"

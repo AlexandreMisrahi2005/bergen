@@ -24,6 +24,19 @@ class KILTNQ(Processor):
         dataset = dataset.remove_columns(['meta', 'output'])
         return dataset
 
+class KILTNQ_Reformulated(Processor):
+    def __init__(self, path=None, *args, **kwargs):
+        dataset_name = 'kilt_nq_rf_short'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+        self.path = path
+
+    def process(self):
+        ds = datasets.load_from_disk(self.path)
+        def map_fn(example):
+            example['label'] = [example["label"]]
+            return example
+        ds = ds.map(map_fn, num_proc=self.num_proc)
+        return ds
 
 class KILTTriviaqa(Processor):
 

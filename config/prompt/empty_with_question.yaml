@@ -1,4 +1,0 @@
-system: ""
-user: f"{docs}\n\n{question}"
-system_without_docs: ""
-user_without_docs: f"{question}"
