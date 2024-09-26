@@ -1,17 +1,17 @@
 train:
     doc: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA_docs
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA_docs
             split: "train"
     
     query: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA
             split: "train"
 dev:
     doc: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA_docs
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA_docs
             type: 'summary' # summary or book, defaults to book
             chunk_size: 1000    # ignored for summary
             overlap: 200        # ignored for summary
@@ -19,15 +19,15 @@ dev:
     
     query: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA
             split: "validation"
 test:
     doc: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA_docs
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA_docs
             split: "test"
     
     query: 
         init_args:
-            _target_: modules.dataset_processor.NarrativeQA
+            _target_: modules.processors.multidomain_dataset_processor.NarrativeQA
             split: "test"
