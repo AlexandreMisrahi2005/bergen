@@ -171,6 +171,38 @@ def print_generate_out(queries, instructions, responses, query_ids, labels, rank
         print()
         print()
 
+def print_prepared_distracted_dataset_examples(gen_dataset, docs_distractors_memory=None, n=3):
+    if docs_distractors_memory is not None:
+        rand_some_docs = random.sample([q_id for q_id,p in docs_distractors_memory.items() if p==1], n) # some oracles
+        rand_some_docs = gen_dataset.filter(lambda example: example['q_id'] in rand_some_docs)
+        rand_rand_docs = random.sample([q_id for q_id,p in docs_distractors_memory.items() if p==0], n) # no oracles
+        rand_rand_docs = gen_dataset.filter(lambda example: example['q_id'] in rand_rand_docs)
+    else:
+        rand_some_docs = random.sample(list(gen_dataset["q_id"]), n)
+        rand_some_docs = gen_dataset.filter(lambda example: example['q_id'] in rand_some_docs)
+    for row in rand_some_docs.iter(batch_size=1):
+        print('_'*50)
+        print('Query ID:', row['q_id'][0])
+        print('Query:', row['query'][0])
+        print('[Some oracle docs (case P)]')
+        print('_'*50)
+        for j,doc in enumerate(row['doc'][0]):
+            print(f"Document {j+1}: {doc}")
+        print('_'*50)
+        print()
+        print()
+    if docs_distractors_memory is not None:
+        for row in rand_rand_docs.iter(batch_size=1):
+            print('_'*50)
+            print('Query ID:', row['q_id'][0])
+            print('Query:', row['query'][0])
+            print('[No oracles, only random docs (case 1-P)]')
+            print('_'*50)
+            for j,doc in enumerate(row['doc'][0]):
+                print(f"Document {j+1}: {doc}")
+            print('_'*50)
+            print()
+            print()
 
 def print_rag_model(rag, retriever_kwargs,reranker_kwargs, generator_kwargs):
     print()
@@ -329,12 +361,18 @@ def get_reranking_filename(runs_folder, query_dataset, doc_dataset, dataset_spli
     query_gen_add = "" if query_generator_name == "copy" else f".{query_generator_name}"
     return f'{runs_folder}/run.rerank.retriever.top_{retrieve_top_k}.{retriever_name}.rerank.top_{rerank_top_k}.{query_dataset}.{doc_dataset}.{dataset_split}.{reranker_name}{query_gen_add}.trec'
 
-def get_ranking_filename(runs_folder, query_dataset, doc_dataset, retriever_name, dataset_split, retrieve_top_k, query_generator_name):
+def get_ranking_filename(runs_folder, query_dataset, doc_dataset, retriever_name, dataset_split, retrieve_top_k, query_generator_name, train_with_k_distractors=0, distract_with_bad_topk=False, generation_top_k=0):
     if retriever_name == 'oracle_provenance':
         return get_oracle_ranking_filename(runs_folder, query_dataset, dataset_split)
     else:
         query_gen_add = "" if query_generator_name == "copy" else f".{query_generator_name}"
-        return f'{runs_folder}/run.retrieve.top_{retrieve_top_k}.{query_dataset}.{doc_dataset}.{dataset_split}.{retriever_name}{query_gen_add}.trec'
+        if train_with_k_distractors == 0:
+            distractors_add = ""
+        elif train_with_k_distractors > 0 and distract_with_bad_topk:
+            distractors_add = f".distractors_{train_with_k_distractors}of{generation_top_k}_badtopk"
+        elif train_with_k_distractors > 0:
+            distractors_add = f".distractors_{train_with_k_distractors}of{generation_top_k}"
+        return f'{runs_folder}/run.retrieve.top_{retrieve_top_k}{distractors_add}.{query_dataset}.{doc_dataset}.{dataset_split}.{retriever_name}{query_gen_add}.trec'
 
 def get_query_generation_filename(query_generation_folder, query_dataset, query_generator_name, split):
     return f'{query_generation_folder}/generated_queries.{query_dataset}.{split}.{query_generator_name}.json'
