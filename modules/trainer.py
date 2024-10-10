@@ -42,6 +42,8 @@ class RAGTrainer(Trainer):
             #print(label_ids)
             logits, loss = self.model_prediction_step(model, model_input=model_input, label_ids=label_ids)
             #print(loss)
+            if prediction_loss_only:
+                return (loss, None, None)
             return (loss, logits, label_ids)
     
 class WandbPredictionProgressCallback(WandbCallback):

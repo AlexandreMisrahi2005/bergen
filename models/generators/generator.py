@@ -61,7 +61,7 @@ class Generator(ABC):
             user_prompt_with_values = eval(user_prompt).replace(':\ ', ': ')
             return f"{system_prompt}\n{user_prompt_with_values}"
         else:
-            if 'system' in self.tokenizer.chat_template:
+            if 'system' in self.tokenizer.chat_template and "System role not supported" not in self.tokenizer.chat_template:
                 instr_prompt = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": eval(user_prompt).replace(':\ ', ': ')}

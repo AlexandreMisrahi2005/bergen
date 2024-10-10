@@ -1,6 +1,8 @@
 from ..dataset_processor import *
 import datasets
 import json
+import zipfile
+import random
 
 from tqdm import tqdm
 from hydra.utils import instantiate
@@ -9,6 +11,89 @@ import pandas as pd
 
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
+
+class BIOASQ12B(Processor):
+    """ 
+    BIOASQ Benchmark from bioasq challenge source, year 2024 task B (12B)
+    To get a larger training set we merge the official train and validation sets and fix the validation size to 1200 and train size to the rest (= 4189 rows)
+    We then discard all 'summary' question types from the validation set yielding a final val set with 940 rows
+    """
+
+    def __init__(self, train_path, dev_path, *args, **kwargs):
+        self.dataset_name = 'BIOASQ12B'
+        self.train_path = train_path
+        self.dev_path = dev_path
+        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
+
+    def process(self):
+        seed = 42
+        if self.split not in ["train", "dev"]:
+            raise ValueError("split should be 'train' or 'dev'")
+        all_data = []
+        with zipfile.ZipFile(self.train_path, 'r') as z:
+            with z.open('BioASQ-training12b/training12b_new.json') as json_file:
+                all_data.extend(json.load(json_file)['questions'])
+        with zipfile.ZipFile(self.dev_path, 'r') as z:
+            for file_name in z.namelist():
+                print(f"Loading file {file_name}")
+                if file_name.endswith('.json'):
+                    with z.open(file_name) as json_file:
+                        all_data.extend(json.load(json_file)['questions'])
+        random.seed(seed)
+        random.shuffle(all_data)
+        dev_data = all_data[:1200]
+        train_data = all_data[1200:]
+        if self.split == "train":
+            data = train_data
+        elif self.split == "dev":
+            data = dev_data
+        
+        import itertools
+        dataset = {"id": [], "content": [], "label": [], "type": []}
+        for row in data:
+
+            # parse labels
+            if row['type'] == 'summary':
+                if self.split == 'train':
+                    if isinstance(row["ideal_answer"], list) and isinstance(row["ideal_answer"][0], str):
+                        dataset['label'].append(row["ideal_answer"])
+                    else:
+                        raise ValueError(f"Unknown label structure for label {row['ideal_answer']}")
+                elif self.split == 'dev': # discard summary questions for dev set
+                    continue
+            elif row['type'] == 'list':
+                assert isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], list), f"unexpected parsing label for {row['id']}: {row['exact_answer']}"
+                # put all combinations of needed answers x synonyms
+                labels = [', '.join(combination) for combination in list(itertools.product(*row['exact_answer']))]
+                if len(labels) > 1000:
+                    print(f"WARNING: id={row['id']} is list-type label and has {len(labels)} combinations. Truncating to 10 synonyms max.")
+                    labels = [', '.join(combination) for combination in list(itertools.product(*([e[:10] for e in row['exact_answer']])))]
+                    if len(labels) > 1000:
+                        print(f"    WARNING: After 10-truncation -> {len(labels)} labels. Truncating to 2 synonyms and 10 elements.")
+                        labels = [', '.join(combination) for combination in list(itertools.product(*([e[:2] for e in row['exact_answer']][:10])))]
+                        print(f"    WARNING: After final truncation -> {len(labels)} labels.")
+                dataset["label"].append(labels)
+            elif row['type'] == 'yesno':
+                dataset['label'].append([row['exact_answer']])
+            elif row['type'] == 'factoid':
+                if isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], list) and len(row['exact_answer']) == 1:
+                    dataset['label'].append(row['exact_answer'][0])
+                elif isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], str):
+                    dataset['label'].append(row['exact_answer'])
+                else:
+                    raise ValueError(f"unexpected parsing label for {row['id']}: {row['exact_answer']}")
+            else:
+                raise ValueError(f"Unexpected question type {row['type']}")
+            
+            dataset["id"].append(row["id"])
+            dataset["content"].append(row["body"])
+            dataset["type"].append(row["type"])
+
+
+        assert len(dataset["id"]) == len(dataset["content"]) == len(dataset["label"]), "id content and labels lengths are not the same"
+        dataset = datasets.Dataset.from_dict(dataset)
+        return dataset
+
 
 
 class BIOASQ11B_Ragged(Processor):
@@ -37,7 +122,7 @@ class PubMed2023_Ragged(Processor):
     
     def process(self):
         hf_name = "jenhsia/ragged"
-        dataset = datasets.load_dataset(hf_name, 'pubmed', num_proc=self.num_proc)[self.split].select(range(100))
+        dataset = datasets.load_dataset(hf_name, 'pubmed', num_proc=self.num_proc)[self.split]
 
         concatenated_data = {}
         for row in tqdm(dataset):
@@ -549,3 +634,197 @@ class MultiQA(Processor):
     def process(self):
         ds = datasets.load_dataset("dmrau/multi_qa", num_proc=self.num_proc)[self.split]
         return ds
+
+class MultiQA_Reformulated(Processor):
+    def __init__(self, path, *args, **kwargs):
+        dataset_name = 'MultiQA_rf_short'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+        self.path = path
+
+    def process(self):
+        ds = datasets.load_from_disk(self.path)
+        def map_fn(example):
+            assert example['label'] is not None, f"id {example['id']} has None label"
+            example['label'] = [example['label']]
+            return example
+        ds = ds.map(map_fn, num_proc=self.num_proc)
+        return ds
+    
+
+class TechQA(Processor):
+    """
+    Paper: https://aclanthology.org/2020.acl-main.117.pdf
+    Official source: https://github.com/IBM/techqa/tree/master/docker/techqa
+    Source we use: https://huggingface.co/datasets/rojagtap/tech-qa
+    Note: we combine train/validation/test splits to have a bigger dev dataset
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'TechQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("rojagtap/tech-qa")
+        dataset = datasets.concatenate_datasets([ds["train"], ds["validation"], ds["test"]])
+        def map_fn(example):
+            example['label'] = [example['answer']]
+            return example
+        dataset = dataset.map(map_fn, num_proc=self.num_proc)
+        dataset = dataset.rename_column("question", "content")
+        dataset = dataset.remove_columns(["document", "answer"])
+        return dataset
+
+class TechQA_docs(Processor):
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'TechQA_docs'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("rojagtap/tech-qa")
+        dataset = datasets.concatenate_datasets([ds["train"], ds["validation"], ds["test"]])
+
+        def chunk_text(text, title, id, max_size=1000, overlap=200):
+            """
+            Chunks the given text into parts with a maximum size and overlap, prepending the title to each chunk.
+            
+            Args:
+            - text: The document to chunk
+            - title: document title to pre-pend to each chunk
+            - id: The id of the document
+            - max_size: Maximum size of each chunk
+            - overlap: Overlap between adjacent chunks
+            
+            Returns:
+            - A list of dictionaries with chunk 'id' and 'content' keys.
+            """
+            chunks = []
+            start = 0
+            chunk_id = 0
+            while start < len(text):
+                end = start + max_size
+                chunk = text[start:end]
+                chunk = title + ": " + chunk  # Prepend the title
+                chunks.append({'id': f"{id}_{chunk_id}", 'content': chunk})
+                start = end - overlap
+                chunk_id += 1
+
+            return chunks
+
+        all_chunks = []
+        for i in range(len(dataset)):
+            id = dataset[i]["id"]
+            doc = dataset[i]["document"]
+            assert len(doc.split(' - ')) >= 2
+            title, text = doc.split(' - ')[0], ' - '.join(doc.split(' - ')[1:])
+            chunks = chunk_text(text, title, id)
+            all_chunks.extend(chunks)
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks).drop_duplicates(subset='content')).remove_columns(["__index_level_0__"])
+        return dataset
+
+
+class ParaphraseRC(Processor):
+    """
+    Paper: https://arxiv.org/pdf/1804.07927
+    Source: https://huggingface.co/datasets/ibm/duorc/viewer/ParaphraseRC/validation
+    DuoRC has two sub datasets: SelfRC (more direct reading comprehension) and ParaphraseRC (more challenging)
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'ParaphraseRC'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        def map_fn(row):
+            row["content"] = f"{row['title']}: {row['content']}"
+            return row
+        dataset = datasets.load_dataset("ibm/duorc", "ParaphraseRC")[self.split].filter(lambda x: not x["no_answer"]).rename_columns({"question_id":"id", "question":"content", "answers":"label"}).map(map_fn, num_proc=self.num_proc).remove_columns(["plot_id", "plot", "title", "no_answer"])
+        return dataset
+
+class ParaphraseRC_docs(Processor):
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'ParaphraseRC_docs'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        dataset = datasets.load_dataset("ibm/duorc", "ParaphraseRC")
+        if self.split == 'all':
+            dataset = datasets.concatenate_datasets([dataset["train"], dataset["validation"], dataset["test"]])
+        else:
+            dataset = dataset[self.split]
+
+        def chunk_text(text, title, id, max_size=1000, overlap=200):
+            """
+            Chunks the given text into parts with a maximum size and overlap, prepending the title to each chunk.
+            
+            Args:
+            - text: The document to chunk
+            - title: document title to pre-pend to each chunk
+            - id: The id of the document
+            - max_size: Maximum size of each chunk
+            - overlap: Overlap between adjacent chunks
+            
+            Returns:
+            - A list of dictionaries with chunk 'id' and 'content' keys.
+            """
+            chunks = []
+            start = 0
+            chunk_id = 0
+            while start < len(text):
+                end = start + max_size
+                if start + overlap > len(text):
+                    break
+                chunk = text[start:end]
+                chunk = title + ": " + chunk  # Prepend the title
+                chunks.append({'id': f"{id}_{chunk_id}", 'content': chunk})
+                start = end - overlap
+                chunk_id += 1
+
+            return chunks
+        
+        plot_ids = set(dataset["plot_id"])
+        plots = {plot_id:None for plot_id in plot_ids}
+        all_chunks = []
+        for i in tqdm(range(len(dataset))):
+            if plots[dataset[i]["plot_id"]] is None:
+                id = dataset[i]["plot_id"]
+                doc = dataset[i]["plot"]
+                title = dataset[i]["title"]
+                chunks = chunk_text(doc, title, id)
+                all_chunks.extend(chunks)
+                plots[dataset[i]["plot_id"]] = True
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks))
+        return dataset
+    
+
+# problem with this dataset: the questions are not designed for a whole datastore but rather with a fixed given context
+# class CovidQA(Processor):
+#     """
+#     Paper: https://aclanthology.org/2020.nlpcovid19-acl.18/
+#     Source: https://github.com/deepset-ai/COVID-QA
+#     HF Source: https://huggingface.co/datasets/deepset/covid_qa_deepset
+#     """
+#     def __init__(self, *args, **kwargs):
+#         dataset_name = 'CovidQA'
+#         super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+#     def process(self):
+#         def map_fn(row):
+#             row["label"] = row["answers"]["text"]
+#             return row
+#         dataset = datasets.load_dataset("deepset/covid_qa_deepset")[self.split].rename_column("question","content").map(map_fn, num_proc=self.num_proc).remove_columns(["document_id", "context", "is_impossible", "answers"])
+#         print(dataset)
+#         print(dataset[0])
+#         print(dataset[100])
+#         return dataset
+    
+# class CORD19(Processor):
+#     def __init__(self, *args, **kwargs):
+#         dataset_name = 'CORD19'
+#         super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+#     def process(self):
+#         dataset = datasets.load_dataset("allenai/cord19", "metadata", trust_remote_code=True)
+#         print(dataset)
+#         dataset = datasets.load_dataset("allenai/cord19", "fulltext", trust_remote_code=True)
+#         print(dataset)
+#         dataset = datasets.load_dataset("allenai/cord19", "embeddings", trust_remote_code=True)
+#         print(dataset)
+#         raise NotImplementedError()

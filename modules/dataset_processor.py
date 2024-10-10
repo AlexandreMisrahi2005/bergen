@@ -397,14 +397,14 @@ class ODQAWikiCorpora63tamberALL(Processor):
         return dataset
 
 
-class PubMed2023(Processor):
+class PubMed2024(Processor):
 
     def __init__(self, *args, **kwargs):
-        self.dataset_name = 'PubMed-2023'
+        self.dataset_name = 'PubMed-2024'
         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
     
     def process(self):
-        hf_name ="ncbi/pubmed"
+        hf_name ="ncbi/pubmed" # https://huggingface.co/datasets/ncbi/pubmed
         dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc, trust_remote_code=True)[self.split]
                 
         def map_fn(example):
@@ -578,6 +578,7 @@ class ProcessDatasets:
                     if field_value is None:
                         raise ValueError(f"Found None value in '{field_name}' field.")
                     elif isinstance(field_value, list) and None in field_value:
+                        print(example)
                         raise ValueError(f"Found None in list in '{field_name}' field.")
                     elif isinstance(field_value, str) and len(field_value.strip()) == 0:
                         raise ValueError(f"Found empty value in '{field_name}' field.")

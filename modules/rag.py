@@ -13,14 +13,14 @@ from modules.metrics import RAGMetrics
 import time 
 import shutil
 import os 
+import random
 from tqdm import tqdm
-import wandb
 import json
 from hydra.utils import instantiate
 from utils import (
     eval_retrieval_kilt, init_experiment, move_finished_experiment,
     write_trec, prepare_dataset_from_ids, load_trec,
-    print_generate_out, print_rag_model,
+    print_generate_out, print_rag_model, print_prepared_distracted_dataset_examples,
     write_generated, write_dict, get_by_id, get_index_path, get_query_generation_filename,
     get_context_processing_filename,
     get_reranking_filename, format_time, get_ranking_filename, get_finished_experiment_name
@@ -50,6 +50,9 @@ class RAG:
                 retrieve_top_k=1,
                 rerank_top_k=1,
                 generation_top_k=1,
+                train_with_k_distractors=0,
+                distract_with_bad_topk=False,
+                train_P_fraction_distractors=1,
                 pyserini_num_threads=1,
                 config=None,
                 debug=False,
@@ -100,12 +103,17 @@ class RAG:
         self.retrieve_top_k = retrieve_top_k
         self.rerank_top_k = rerank_top_k
         self.generation_top_k = generation_top_k
+        self.train_with_k_distractors = train_with_k_distractors
+        self.distract_with_bad_topk = distract_with_bad_topk
+        self.train_P_fraction_distractors = train_P_fraction_distractors
         self.pyserini_num_threads = pyserini_num_threads
         self.overwrite_exp = overwrite_exp
         self.overwrite_index = overwrite_index
         self.training_config = train
 
         assert self.generation_top_k <= self.rerank_top_k <= self.retrieve_top_k
+        assert self.train_with_k_distractors <= self.generation_top_k
+        assert 0 <= self.train_P_fraction_distractors <= 1
         # init experiment (set run name, create dirs)
         self.run_name, self.experiment_folder = init_experiment(config, experiments_folder, index_folder, runs_folder, run_name, overwrite_exp=self.overwrite_exp, continue_batch=continue_batch)
         # process datasets, downloading, loading, covert to format
@@ -237,6 +245,7 @@ class RAG:
                  doc_dataset_name,
                  dataset_split, 
                  retrieve_top_k,
+                 train_with_k_distractors=0,
                  eval_ranking=True,
                  ):
         
@@ -247,24 +256,53 @@ class RAG:
             self.retriever.get_clean_model_name(),
             dataset_split, 
             retrieve_top_k,
-            self.query_generator.get_clean_model_name()
+            self.query_generator.get_clean_model_name(),
+            train_with_k_distractors=train_with_k_distractors,
+            distract_with_bad_topk=self.distract_with_bad_topk, # used only if train_with_k_distractors > 0
+            generation_top_k=self.generation_top_k,       # used only if train_with_k_distractors > 0
         )
         #if return_embeddings:
                 #raise NotImplementedError('For returning Embeddings is not yet fully implemented!')
         doc_embeds_path = get_index_path(self.index_folder, doc_dataset_name, self.retriever.get_clean_model_name(), 'doc')
         query_embeds_path = get_index_path(self.index_folder, query_dataset_name, self.retriever.get_clean_model_name(), 'query', dataset_split=dataset_split, query_generator_name=self.query_generator.get_clean_model_name())
         if not os.path.exists(ranking_file) or self.overwrite_exp or self.overwrite_index:
-            print(f'Run {ranking_file} does not exists, running retrieve...')
-             # retrieve
-            out_ranking = self.retriever.retrieve(
-                dataset,
-                query_embeds_path,
-                doc_embeds_path,
+            # check if retrieval without distractors exists
+            ranking_file_no_distractors = get_ranking_filename(
+                self.runs_folder,
+                query_dataset_name,
+                doc_dataset_name,
+                self.retriever.get_clean_model_name(),
+                dataset_split, 
                 retrieve_top_k,
-                overwrite_index=self.overwrite_index
-                )
-            query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
-            write_trec(ranking_file, query_ids, doc_ids, scores)
+                self.query_generator.get_clean_model_name()
+            )
+            if ranking_file_no_distractors == ranking_file or (not os.path.exists(ranking_file_no_distractors)) or self.overwrite_exp or self.overwrite_index:
+                print(f'Run {ranking_file_no_distractors} does not exist, running retrieve...')
+                # retrieve
+                out_ranking = self.retriever.retrieve(
+                    dataset,
+                    query_embeds_path,
+                    doc_embeds_path,
+                    retrieve_top_k,
+                    overwrite_index=self.overwrite_index
+                    )
+                query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
+                print(f"Saving retrieval run to {ranking_file_no_distractors}")
+                write_trec(ranking_file_no_distractors, query_ids, doc_ids, scores)
+            else:
+                query_ids, doc_ids, scores = load_trec(ranking_file_no_distractors)
+            if train_with_k_distractors > 0:
+                print("Adding distractors to retrieval...")
+                doc_ids, scores = self.retriever.add_distractor_docs(
+                    doc_ids, 
+                    self.train_with_k_distractors, 
+                    self.generation_top_k,
+                    all_doc_ids=dataset['doc']['id'] if not self.distract_with_bad_topk else None,
+                    distract_with_bad_topk=self.distract_with_bad_topk,
+                    scores=scores,
+                    )
+                print(f"Saving retrieval run to {ranking_file}")
+                write_trec(ranking_file, query_ids, doc_ids, scores)
         else:             
             query_ids, doc_ids, scores = load_trec(ranking_file)
         # copy ranking file to experiment folder    
@@ -311,6 +349,7 @@ class RAG:
         )
 
         if not os.path.exists(reranking_file) or self.overwrite_exp:
+            print(f'Run {reranking_file} does not exist, running rerank...')
             rerank_dataset = prepare_dataset_from_ids(
                     dataset, 
                     query_ids, 
@@ -478,8 +517,30 @@ class RAG:
                 doc_dataset_name,
                 dataset_split, 
                 self.retrieve_top_k,
+                self.train_with_k_distractors,
                 eval_ranking=False
-                )            
+                )
+            docs_distractors_memory = None
+            if self.train_P_fraction_distractors < 1:   # need 1 retrieval with only random docs
+                print(f"Filling with all random retrievals for {100*(1-self.train_P_fraction_distractors)}% of the queries")
+                print(f"Filling with {self.train_with_k_distractors}/{self.generation_top_k} random retrievals for {100*self.train_P_fraction_distractors}% of the queries")
+                rand_query_ids, rand_doc_ids, _ = self.retrieve(
+                    dataset, 
+                    query_dataset_name, 
+                    doc_dataset_name,
+                    dataset_split, 
+                    self.retrieve_top_k,
+                    train_with_k_distractors=self.generation_top_k, # nb of distractors is the nb of docs to retrieve
+                    eval_ranking=False
+                    )
+                rand_mapping = {qid: did for qid, did in zip(rand_query_ids, rand_doc_ids)}
+                docs_distractors_memory = {}
+                for i in range(len(query_ids)):
+                    if random.random() > self.train_P_fraction_distractors:
+                        doc_ids[i] = rand_mapping[query_ids[i]]  # replace doc ids with entirely random ones 1-P% of the time
+                        docs_distractors_memory[query_ids[i]] = 0 # no oracles
+                    else:
+                        docs_distractors_memory[query_ids[i]] = 1 # some oracles
         else:
             query_ids, doc_ids = None, None
 
@@ -504,6 +565,9 @@ class RAG:
             doc_ids, 
             multi_doc=True, 
             )
+        
+        if self.train_with_k_distractors > 0:
+            print_prepared_distracted_dataset_examples(gen_dataset, docs_distractors_memory)
 
         # context processing if needed
         if self.context_processor is not None and self.retriever is not None:
@@ -515,15 +579,10 @@ class RAG:
         
         # split train into train and test
         train_test_datasets = gen_dataset.train_test_split(self.training_config.test_size_ratio, seed=42)
-        # print('train_test_datasets: ', train_test_datasets)
-        # print("example row")
-        # print(train_test_datasets['train'][0])
 
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
         train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True) # set training=True to have labels (if False, eval loss will be None)
-        # print("len(train_test_datasets['train']): ", len(train_test_datasets['train']))
-        # print("len(train_test_datasets['test']): ", len(train_test_datasets['test']))
 
         # We keep some data to log in wandb, from the test set:
         call_back_data = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=False)

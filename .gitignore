@@ -8,6 +8,8 @@ tests/dataset/
 tests/index/
 tests/exp/
 tests/run/
+test.ipynb
+test.py
 wandb/
 
 datasets/
@@ -24,3 +26,6 @@ scripts/slurm_scripts/
 generated_queries/
 
 *.DS_Store
+
+tmp/
+runs/
