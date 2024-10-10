@@ -613,12 +613,6 @@ class RAG:
         save_steps = max(total_steps  // num_saving_steps, 1)
         logging_steps = max(total_steps // num_saving_steps, 1)
 
-        # print("torch.cuda.device_count() =", torch.cuda.device_count())
-        # print("total_batch_size =", total_batch_size)
-        # print("total_steps =", total_steps)
-        # print("eval model every", eval_steps, "training steps")
-        # print("saving model every", save_steps, "training steps")
-
         if self.training_config.trainer.report_to == "wandb":
             import wandb
             wandb_api_key = os.environ.get("WANDB_API_KEY")

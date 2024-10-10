@@ -14,7 +14,6 @@ from hydra.utils import instantiate
 import json
 from functools import partial
 
-
 # Base class that every processor interhits from 
 class Processor(object):
     
@@ -566,7 +565,7 @@ class MergedDocDataset(Processor):
             dataset = self.shuffled_labels_as_content(dataset)
         dataset.name = self.dataset_name + debug_str + oracle_provenance_str
         return dataset
-
+    
 
 class ProcessDatasets:
                 

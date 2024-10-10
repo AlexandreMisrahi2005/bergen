@@ -4,17 +4,13 @@ from tqdm import tqdm
 from datasets import Dataset
 
 class UnfoldAPIQuery(QueryGenerator):
+    """
+    Useful for APIBench dataset to reformulate the queries for better retrieval
+    """
     def __init__(self, name="unfolded_query", model="generator", prompt=""):
         self.name = name
         self.model = model
         self.prompt = prompt
-
-    def init_generator(self, generator):
-        if self.model == "generator":
-            self.generator = generator
-        else:
-            # implement loading another model with HuggingFace
-            raise NotImplementedError
         
     def generate(self, user_questions: List[str]):
         retriever_queries = []
