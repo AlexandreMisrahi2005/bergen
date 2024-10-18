@@ -1,7 +1,8 @@
 init_args: 
   _target_: models.generators.llm.LLM
-  model_name: "google/gemma-2b"
+  model_name: "BioMistral/BioMistral-7B-DARE"
   max_new_tokens: 128
-  max_length: 2048
+  max_length: 32000
   quantization: "int4"
-  batch_size: 8
+  batch_size: 32
+

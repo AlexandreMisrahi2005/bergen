@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from modules.dataset import Tokenized_Sorted_Dataset
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+import torch
 
 
 class Generator(ABC):
@@ -16,6 +17,7 @@ class Generator(ABC):
         self.batch_size = batch_size
 
     @abstractmethod
+    @torch.no_grad()
     def generate(self, inp):
         pass
     

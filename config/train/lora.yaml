@@ -2,6 +2,7 @@ generate_test_samples: 5
 test_size_ratio: 0.01
 num_saving_steps: 10
 wandb_project_name: "ft" # used if trainer.report_to == "wandb"
+resume_from_checkpoint: False
 trainer:
   dataloader_num_workers: 4
   eval_accumulation_steps: 4
@@ -16,6 +17,7 @@ trainer:
   bf16: True
   report_to: "wandb"
 lora: 
+  target_modules: "all-linear"
   lora_alpha: 64
   lora_dropout: 0.1
   r: 32

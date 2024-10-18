@@ -1,4 +1,5 @@
 from ..dataset_processor import *
+from modules.processors.utils import chunk_text, listify_label
 import datasets
 import json
 import zipfile
@@ -8,6 +9,7 @@ from tqdm import tqdm
 from hydra.utils import instantiate
 import requests  
 import pandas as pd
+import os
 
 from urllib.parse import unquote
 
@@ -794,36 +796,225 @@ class ParaphraseRC_docs(Processor):
     
 
 # problem with this dataset: the questions are not designed for a whole datastore but rather with a fixed given context
-# class CovidQA(Processor):
-#     """
-#     Paper: https://aclanthology.org/2020.nlpcovid19-acl.18/
-#     Source: https://github.com/deepset-ai/COVID-QA
-#     HF Source: https://huggingface.co/datasets/deepset/covid_qa_deepset
-#     """
-#     def __init__(self, *args, **kwargs):
-#         dataset_name = 'CovidQA'
-#         super().__init__(*args, **kwargs, dataset_name=dataset_name)
+class CovidQA(Processor):
+    """
+    Paper: https://aclanthology.org/2020.nlpcovid19-acl.18/
+    Source: https://github.com/deepset-ai/COVID-QA
+    HF Source: https://huggingface.co/datasets/deepset/covid_qa_deepset
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'CovidQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
-#     def process(self):
-#         def map_fn(row):
-#             row["label"] = row["answers"]["text"]
-#             return row
-#         dataset = datasets.load_dataset("deepset/covid_qa_deepset")[self.split].rename_column("question","content").map(map_fn, num_proc=self.num_proc).remove_columns(["document_id", "context", "is_impossible", "answers"])
-#         print(dataset)
-#         print(dataset[0])
-#         print(dataset[100])
-#         return dataset
+    def process(self):
+        def map_fn(row):
+            row["label"] = row["answers"]["text"]
+            return row
+        dataset = datasets.load_dataset("deepset/covid_qa_deepset")[self.split].rename_column("question","content").map(map_fn, num_proc=self.num_proc).remove_columns(["document_id", "context", "is_impossible", "answers"]).cast_column('id', datasets.Value('string'))
+        return dataset
     
-# class CORD19(Processor):
-#     def __init__(self, *args, **kwargs):
-#         dataset_name = 'CORD19'
-#         super().__init__(*args, **kwargs, dataset_name=dataset_name)
+class CORD19(Processor):
+    """
+    Paper: https://aclanthology.org/2020.nlpcovid19-acl.1.pdf
+    HF Source: https://huggingface.co/datasets/allenai/cord19
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'CORD19'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
-#     def process(self):
-#         dataset = datasets.load_dataset("allenai/cord19", "metadata", trust_remote_code=True)
-#         print(dataset)
-#         dataset = datasets.load_dataset("allenai/cord19", "fulltext", trust_remote_code=True)
-#         print(dataset)
-#         dataset = datasets.load_dataset("allenai/cord19", "embeddings", trust_remote_code=True)
-#         print(dataset)
-#         raise NotImplementedError()
+    def process(self):
+        dataset = datasets.load_dataset("allenai/cord19", "fulltext", trust_remote_code=True)['train'] # only one split
+        all_chunks = []
+        for i in tqdm(range(len(dataset))):
+            doc = dataset[i]["fulltext"]
+            title = dataset[i]["title"]
+            chunks = chunk_text(doc, str(i), title, max_size=100, overlap=20, words_or_chars='words')
+            all_chunks.extend(chunks)
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks))
+
+        return dataset
+    
+class LoTTE(Processor):
+    """
+    Source: https://downloads.cs.stanford.edu/nlp/data/colbert/colbertv2/lotte.tar.gz
+    Other possible source: https://huggingface.co/colbertv2
+    """
+    def __init__(self, path, *args, **kwargs):
+        dataset_name = 'LoTTE'
+        self.path = path
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        import tarfile
+        # download https://downloads.cs.stanford.edu/nlp/data/colbert/colbertv2/lotte.tar.gz in some directory
+        parent_dir = os.path.dirname(self.path)
+        with tarfile.open(self.path, 'r:gz') as tar:
+            if not os.path.exists(os.path.join(parent_dir, 'lotte/')):
+                tar.extractall()
+                assert os.path.exists(os.path.join(parent_dir, 'lotte/pooled/dev/collection.tsv')), "The extracted directory does not contain the expected files."
+        dev_df = pd.read_csv(os.path.join(parent_dir, 'lotte/pooled/dev/collection.tsv'), sep='\t', header=None)
+        test_df = pd.read_csv(os.path.join(parent_dir, 'lotte/pooled/test/collection.tsv'), sep='\t', header=None)        
+        dev_df['id'] = dev_df[0].apply(lambda x: f"dev_{x}")
+        dev_df['content'] = dev_df[1]
+        dev_df = dev_df.drop(columns=[0, 1])
+        test_df['id'] = test_df[0].apply(lambda x: f"test_{x}")
+        test_df['content'] = test_df[1]
+        test_df = test_df.drop(columns=[0, 1])
+        df = pd.concat([dev_df, test_df])
+        all_chunks = []
+        for i in range(len(df)):
+            chunks = chunk_text(df.iloc[i]['content'], df.iloc[i]['id'], max_size=100, overlap=20, words_or_chars='words')
+            all_chunks.extend(chunks)
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks))
+        return dataset
+
+def process_LoTTE_benchmarks(url: str) -> datasets.Dataset:
+    print(f"Downloading {url}...")
+    response = requests.get(url)
+    response.raise_for_status()
+    data = []
+    for line in response.text.strip().split('\n'):
+        data.append(json.loads(line))
+    tmp_df = pd.DataFrame(data=data)
+    tmp_df = tmp_df.rename(columns={'qid': 'id', 'question': 'content', 'answer': 'label'})
+    dataset = datasets.Dataset.from_pandas(tmp_df)
+    dataset = dataset.map(listify_label)
+    dataset = dataset.remove_columns([column for column in dataset.column_names if column not in ['id', 'content', 'label']])
+    return dataset
+
+class RobustQA_Lifestyle(Processor):
+    """
+    Paper: RAG-QA Arena https://arxiv.org/pdf/2407.13998
+    Source: https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_lifestyle_with_citation.jsonl
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'RobustQA_Lifestyle'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        return process_LoTTE_benchmarks("https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_lifestyle_with_citation.jsonl")
+    
+class RobustQA_Recreation(Processor):
+    """
+    Paper: RAG-QA Arena https://arxiv.org/pdf/2407.13998
+    Source: https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_recreation_with_citation.jsonl
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'RobustQA_Recreation'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        return process_LoTTE_benchmarks("https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_recreation_with_citation.jsonl")
+    
+class RobustQA_Science(Processor):
+    """
+    Paper: RAG-QA Arena https://arxiv.org/pdf/2407.13998
+    Source: https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_science_with_citation.jsonl
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'RobustQA_Science'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        return process_LoTTE_benchmarks("https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_science_with_citation.jsonl")
+    
+class RobustQA_Technology(Processor):
+    """
+    Paper: RAG-QA Arena https://arxiv.org/pdf/2407.13998
+    Source: https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_technology_with_citation.jsonl
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'RobustQA_Technology'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        return process_LoTTE_benchmarks("https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_technology_with_citation.jsonl")
+    
+class RobustQA_Writing(Processor):
+    """
+    Paper: RAG-QA Arena https://arxiv.org/pdf/2407.13998
+    Source: https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_writing_with_citation.jsonl
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'RobustQA_Writing'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        return process_LoTTE_benchmarks("https://raw.githubusercontent.com/awslabs/rag-qa-arena/refs/heads/main/data/annotations_writing_with_citation.jsonl")
+    
+class FiQA(Processor):
+    """
+    Challenge: https://sites.google.com/view/fiqa/
+    Source: https://huggingface.co/datasets/LLukas22/fiqa
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'FiQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        dataset = datasets.load_dataset("LLukas22/fiqa", num_proc=self.num_proc)[self.split]
+        dataset = dataset.rename_column("answer", "label").rename_column("question", "content").map(lambda _, idx: {"id": str(idx)}, with_indices=True).map(listify_label)
+        return dataset
+
+class FiQA_corpus(Processor):
+    """
+    Source: https://huggingface.co/datasets/BeIR/fiqa
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'FiQA_corpus'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        dataset = datasets.load_dataset("BeIR/fiqa", "corpus", num_proc=self.num_proc)["corpus"]
+        dataset = dataset.rename_column("_id", "id").rename_column("text", "content").remove_columns(["title"])
+        return dataset
+    
+class SearchQA(Processor):
+    """
+    Paper: https://arxiv.org/abs/1704.05179
+    Source: https://huggingface.co/datasets/kyunghyuncho/search_qa
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'SearchQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        dataset = datasets.load_dataset("kyunghyuncho/search_qa", "train_test_val", trust_remote_code=True)[self.split]
+        dataset = dataset.rename_column("answer", "label").rename_column("question", "content").map(listify_label).map(lambda _, idx: {"id": str(idx)}, with_indices=True)
+        dataset = dataset.remove_columns([col for col in dataset.column_names if col not in ['id', 'content', 'label']])
+        return dataset
+    
+class SearchQA_corpus(Processor):
+    """
+    Paper: https://arxiv.org/abs/1704.05179
+    Source: https://huggingface.co/datasets/kyunghyuncho/search_qa
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'SearchQA_corpus'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        # load train, validation test corpus
+        if self.split == 'all':
+            train = datasets.load_dataset("kyunghyuncho/search_qa", "train_test_val", trust_remote_code=True)["train"]
+            valid = datasets.load_dataset("kyunghyuncho/search_qa", "train_test_val", trust_remote_code=True)["validation"]
+            test = datasets.load_dataset("kyunghyuncho/search_qa", "train_test_val", trust_remote_code=True)["test"]
+            dataset = datasets.concatenate_datasets([train, valid, test])
+        else:
+            raise NotImplementedError("Split not implemented")
+        all_search_results = []
+        all_urls = []
+        n_docs = []
+        for i in range(len(dataset)):
+            snippets = dataset[i]["search_results"]["snippets"]
+            n_docs.append(len(snippets))
+            urls = dataset[i]["search_results"]["urls"]
+            assert len(snippets) == len(urls)
+            for j in range(len(snippets)):
+                all_search_results.append(snippets[j])
+                all_urls.append(urls[j])
+        if len(set(all_urls)) == len(all_urls):
+            print("There are duplicate URLs in the dataset. Using custom ids.")
+            all_urls = [f"{i}" for i in range(len(all_search_results))]
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame({"content": all_search_results, "id": all_urls})).filter(lambda x: x['content'] is not None)
+        return dataset

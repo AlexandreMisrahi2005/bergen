@@ -154,6 +154,7 @@ def main():
                 retriever.get_clean_model_name(),
                 dataset_split,
                 25,  # retrieve top k
+                0,   # distractors
                 "copy" # query generator get clean model name
             )
 

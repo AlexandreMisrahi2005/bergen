@@ -16,6 +16,7 @@ import os
 import random
 from tqdm import tqdm
 import json
+import torch
 from hydra.utils import instantiate
 from utils import (
     eval_retrieval_kilt, init_experiment, move_finished_experiment,
@@ -495,6 +496,7 @@ class RAG:
         from transformers import Trainer
         from modules.dataset import Tokenized_Sorted_Dataset
         from torch.utils.data import DataLoader
+        from omegaconf import ListConfig
 
         dataset_split = 'train'
         dataset = self.datasets[dataset_split] 
@@ -598,20 +600,23 @@ class RAG:
             self.generator.model = prepare_model_for_kbit_training(self.generator.model)
             print("using lora training")
             # lora config
+            target_modules = list(self.training_config.lora.target_modules) if isinstance(self.training_config.lora.target_modules, ListConfig) else self.training_config.lora.target_modules
+            self.training_config.lora.__delattr__('target_modules')
             lora_config = LoraConfig(
+                target_modules=target_modules,
                 **self.training_config.lora,
-                target_modules=['q_proj', 'down_proj', 'gate_proj', 'k_proj', 'v_proj', 'o_proj', 'up_proj'],
                 )
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
             self.generator.model.print_trainable_parameters()
 
         total_batch_size = self.training_config.trainer.per_device_train_batch_size * torch.cuda.device_count()
-        total_steps = len(train_test_datasets['train']) // total_batch_size
+        total_steps = self.training_config.trainer.num_train_epochs * (len(train_test_datasets['train']) // total_batch_size) // self.training_config.trainer.gradient_accumulation_steps
         num_saving_steps = self.training_config.num_saving_steps
         eval_steps =  max(total_steps// num_saving_steps, 1)
         save_steps = max(total_steps  // num_saving_steps, 1)
         logging_steps = max(total_steps // num_saving_steps, 1)
+        print(f"Total steps: {total_steps}, eval steps: {eval_steps}, save steps: {save_steps}, logging steps: {logging_steps}")
 
         if self.training_config.trainer.report_to == "wandb":
             import wandb
@@ -633,18 +638,20 @@ class RAG:
             remove_unused_columns=False,
         )
 
-        trainer = RAGTrainer(
+        trainer = Trainer(
             model=self.generator.model,
-            model_prediction_step=self.generator.prediction_step,
-            generate=self.generator.generate,
+            # model_prediction_step=self.generator.prediction_step,
+            # generate=self.generator.generate,
             args=args,
             data_collator=self.generator.collate_fn,
             train_dataset=train_test_datasets['train'],
             eval_dataset=train_test_datasets['test'],
-            call_back_data=call_back_data_select
+            # call_back_data=call_back_data_select
         )
-        trainer.train()
+        trainer.evaluate()
+        trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         self.generator.model = trainer.model
+        self.generator.model.eval()
         move_finished_experiment(self.experiment_folder)
         self.experiment_folder = get_finished_experiment_name(self.experiment_folder)
         if self.training_config.trainer.report_to == "wandb":
