@@ -1,4 +1,4 @@
-from ..dataset_processor import *
+from ..dataset_processor import Processor
 from modules.processors.utils import chunk_text, listify_label
 import datasets
 import json
@@ -6,7 +6,6 @@ import zipfile
 import random
 
 from tqdm import tqdm
-from hydra.utils import instantiate
 import requests  
 import pandas as pd
 import os
@@ -213,7 +212,7 @@ class APIBench_gorilla_HF(Processor):
         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
     
     def process(self):
-        apibench_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/huggingface_eval.json'
+        apibench_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/huggingface_eval.json'
         api_bench_dataset = process_APIBench_gorilla(apibench_file)
         return api_bench_dataset
     
@@ -224,7 +223,7 @@ class APIBench_gorilla_TF(Processor):
         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
     
     def process(self):
-        apibench_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/tensorflow_eval.json'
+        apibench_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/tensorflow_eval.json'
         api_bench_dataset = process_APIBench_gorilla(apibench_file)
         return api_bench_dataset
     
@@ -235,7 +234,7 @@ class APIBench_gorilla_TH(Processor):
         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
     
     def process(self):
-        apibench_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/torchhub_eval.json'
+        apibench_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/apibench/torchhub_eval.json'
         api_bench_dataset = process_APIBench_gorilla(apibench_file)
         return api_bench_dataset
 
@@ -291,7 +290,7 @@ class API_gorilla_HF(Processor):
         """
         self.split should be one of ['huggingface', 'torchhub', 'tensorflowhub']
         """
-        api_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/huggingface_api.jsonl'
+        api_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/huggingface_api.jsonl'
         api_dataset = process_API_gorilla(api_file)
         return api_dataset
     
@@ -306,7 +305,7 @@ class API_gorilla_TF(Processor):
         """
         self.split should be one of ['huggingface', 'torchhub', 'tensorflowhub']
         """
-        api_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/tensorflowhub_api.jsonl'
+        api_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/tensorflowhub_api.jsonl'
         api_dataset = process_API_gorilla(api_file)
         return api_dataset
     
@@ -321,7 +320,7 @@ class API_gorilla_TH(Processor):
         self.split should be one of ['huggingface', 'torchhub', 'tensorflowhub']
         """
 
-        api_file = f'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/torchhub_api.jsonl'
+        api_file = 'https://raw.githubusercontent.com/ShishirPatil/gorilla/main/data/api/torchhub_api.jsonl'
         api_dataset = process_API_gorilla(api_file)
         return api_dataset
     
@@ -1017,4 +1016,26 @@ class SearchQA_corpus(Processor):
             print("There are duplicate URLs in the dataset. Using custom ids.")
             all_urls = [f"{i}" for i in range(len(all_search_results))]
         dataset = datasets.Dataset.from_pandas(pd.DataFrame({"content": all_search_results, "id": all_urls})).filter(lambda x: x['content'] is not None)
+        return dataset
+    
+
+class MultiQA_distill_mistral7B(Processor):
+    """
+    Load MultiQA train split generations by mistral-7B
+    """
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'MultiQA_distill_mistral7B'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        paths = ["/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_0_110000/eval_train_out.json",
+                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_110000_220000/eval_train_out.json",
+                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_220000_330000/eval_train_out.json",
+                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_330000_-1/eval_train_out.json"]
+        all_data = []
+        for path in paths:
+            with open(path, 'r') as f:
+                data = json.load(f)
+                all_data.extend([{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "instruction": d["instruction"], "true_label":d["label"]} for d in data])
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_data))
         return dataset

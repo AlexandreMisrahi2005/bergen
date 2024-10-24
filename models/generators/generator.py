@@ -82,6 +82,8 @@ class Generator(ABC):
         - the final prompt
         - if a label is provided, the position of the first label index within the tokenized sequence (for masking in training)
         """
+        add_generation_prompt = (label is None)
+        
         label_start_index = None
         if self.tokenizer.chat_template is None:
             user_prompt_with_values = eval(user_prompt).replace(':\ ', ': ')
@@ -104,7 +106,7 @@ class Generator(ABC):
                     label_start_index = len(self.tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, add_special_tokens=False))
                     messages.append({"role": "assistant", "content": label})
                 
-                prompt = self.tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False) # TODO: should we add eos here ?
+                prompt = self.tokenizer.apply_chat_template(messages, add_generation_prompt=add_generation_prompt, tokenize=False) # TODO: should we add eos here ?
 
             except TemplateError as e:
                 if "System role not supported" in str(e):
@@ -115,7 +117,7 @@ class Generator(ABC):
                         label_start_index = len(self.tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, add_special_tokens=False))
                         messages.append({"role": "assistant", "content": label})
 
-                    prompt = self.tokenizer.apply_chat_template(messages,  add_generation_prompt=False, tokenize=False)
+                    prompt = self.tokenizer.apply_chat_template(messages,  add_generation_prompt=add_generation_prompt, tokenize=False)
                 else:
                     raise e
         
