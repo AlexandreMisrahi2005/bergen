@@ -594,7 +594,21 @@ class RAG:
         
         # Switch back the model to 'train' mode:
         self.generator.model.train()
-
+        gradient_ckpt_enabled = False
+        if getattr(self.training_config, 'gradient_checkpointing', None):            
+            print('Enabling checkpointing')
+            try:
+                # Attempt to enable gradient checkpointing
+                self.generator.model.gradient_checkpointing_enable()
+                gradient_ckpt_enabled = True
+                print("Gradient checkpointing enabled.")
+            except AttributeError:
+                # If gradient checkpointing is not supported, catch the AttributeError
+                print("Warning: Model does not support gradient checkpointing. Continuing without it.")
+            except Exception as e:
+                # Catch any other unexpected exceptions and print the error
+                print(f"Warning: An error occurred while enabling gradient checkpointing: {e}")
+                
         print("Data preprocessed")
         # if lora in train config
         if 'lora' in self.training_config:
@@ -610,6 +624,7 @@ class RAG:
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
             self.generator.model.print_trainable_parameters()
+            self.generator.model = self.generator.model.bfloat16()
 
         total_batch_size = self.training_config.trainer.per_device_train_batch_size * torch.cuda.device_count()
         total_steps = self.training_config.trainer.num_train_epochs * (len(train_test_datasets['train']) // total_batch_size) // self.training_config.trainer.gradient_accumulation_steps
@@ -623,13 +638,15 @@ class RAG:
             run_name=self.run_name,
             output_dir=f'{self.experiment_folder}/train/',
             **self.training_config.trainer,
-            evaluation_strategy="steps",
+            eval_strategy="steps",
             eval_steps=eval_steps,
             save_steps=save_steps,
             logging_steps=logging_steps,
             load_best_model_at_end=True,
             remove_unused_columns=False,
         )
+        
+        self.generator.model = self.generator.model.bfloat16()
 
         trainer = Trainer(
             model=self.generator.model,
@@ -641,6 +658,11 @@ class RAG:
         trainer.evaluate()
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         self.generator.model = trainer.model
+        
+        if gradient_ckpt_enabled:
+            self.generator.model.gradient_checkpointing_disable()
+        
+        # Restoring eval mode now that training is done
         self.generator.model.eval()
         move_finished_experiment(self.experiment_folder)
         self.experiment_folder = get_finished_experiment_name(self.experiment_folder)

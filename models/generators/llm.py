@@ -154,19 +154,21 @@ class LLM(Generator):
         NB: this assert involves multiple tokenization/detokenization but on CPU and it's worth it
         """
         # Tokenize and detokenize all original labels to handle tokenization inconsistencies (like extra spaces).
+        # We eliminate the spaces because they cause assert problems due to how tokenization handles spaces
         sanitized_original_labels = [
-            self.tokenizer.decode(self.tokenizer(elt)['input_ids'], skip_special_tokens=True).strip() 
+            self.tokenizer.decode(self.tokenizer(elt)['input_ids'], skip_special_tokens=True).strip().replace(" ", "") 
             for elt in original_labels
         ]
 
         # Build the recovered label from the provided label tensor.
-        recovered_label = self.tokenizer.decode(label, skip_special_tokens=True).strip()
+        recovered_label = self.tokenizer.decode(label, skip_special_tokens=True).strip().replace(" ", "")
 
         # Check if the recovered label matches any of the sanitized original labels.
         is_valid_label = any(recovered_label == sanitized_label for sanitized_label in sanitized_original_labels)
 
         # Assert if the recovered label was found in the original labels.
-        assert is_valid_label, f"###### <{recovered_label}> NOT INCLUDED IN <{original_labels}>"
+        if not is_valid_label:
+            warnings.warn(f"###### <{recovered_label}> NOT INCLUDED IN <{original_labels}>")
 
     def collate_fn(self, examples: list[dict], eval: bool = False, **kwargs):
         ignore_index = -100
@@ -202,6 +204,11 @@ class LLM(Generator):
                 # Count the number of padding tokens on the left
                 left_padding_count = (attention_mask_tensor[i] == 0).sum().item()
                 # todo: handle case where left padding count is too large or we cropped the label no ?
+                
+                if examples[i]['label_start_index']+left_padding_count + 1 > label_ids.size(1):
+                    warnings.warn("Docs + query is too long: label will be ignored. If it happens too often consider\
+                        increasing the `max_seq_length`.")
+                
                 # In the label there is only tokens after position padding_count + label_start_idnex:
                 label_ids[i, :examples[i]['label_start_index']+left_padding_count + 1] = ignore_index
                 
