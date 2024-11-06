@@ -180,7 +180,10 @@ def print_generate_out(queries, instructions, responses, query_ids, labels, rank
         print('_'*50)
         if instructions[i] != None:
             print('Instruction to Generator:')
-            print(instructions[i])
+            if isinstance(instructions[i], tuple):
+                print(instructions[i][0])
+            else:
+                print(instructions[i])
         print()
         print('LLM Answer:')
         print(responses[i])

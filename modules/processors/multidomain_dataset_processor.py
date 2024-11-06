@@ -17,90 +17,6 @@ class BIOASQ12B(Processor):
     BIOASQ Benchmark from bioasq challenge source, year 2024 task B (12B)
     To get a larger training set we merge the official train and validation sets and fix the validation size to 1200 and train size to the rest (= 4189 rows)
     We then discard all 'summary' question types from the validation set yielding a final val set with 940 rows
-    """
-
-    def __init__(self, train_path, dev_path, *args, **kwargs):
-        self.dataset_name = 'BIOASQ12B'
-        self.train_path = train_path
-        self.dev_path = dev_path
-        super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
-
-    def process(self):
-        seed = 42
-        if self.split not in ["train", "dev"]:
-            raise ValueError("split should be 'train' or 'dev'")
-        all_data = []
-        with zipfile.ZipFile(self.train_path, 'r') as z:
-            with z.open('BioASQ-training12b/training12b_new.json') as json_file:
-                all_data.extend(json.load(json_file)['questions'])
-        with zipfile.ZipFile(self.dev_path, 'r') as z:
-            for file_name in z.namelist():
-                print(f"Loading file {file_name}")
-                if file_name.endswith('.json'):
-                    with z.open(file_name) as json_file:
-                        all_data.extend(json.load(json_file)['questions'])
-        random.seed(seed)
-        random.shuffle(all_data)
-        dev_data = all_data[:1200]
-        train_data = all_data[1200:]
-        if self.split == "train":
-            data = train_data
-        elif self.split == "dev":
-            data = dev_data
-        
-        import itertools
-        dataset = {"id": [], "content": [], "label": [], "type": []}
-        for row in data:
-
-            # parse labels
-            if row['type'] == 'summary':
-                if self.split == 'train':
-                    if isinstance(row["ideal_answer"], list) and isinstance(row["ideal_answer"][0], str):
-                        dataset['label'].append(row["ideal_answer"])
-                    else:
-                        raise ValueError(f"Unknown label structure for label {row['ideal_answer']}")
-                elif self.split == 'dev': # discard summary questions for dev set
-                    continue
-            elif row['type'] == 'list':
-                assert isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], list), f"unexpected parsing label for {row['id']}: {row['exact_answer']}"
-                # put all combinations of needed answers x synonyms
-                labels = [', '.join(combination) for combination in list(itertools.product(*row['exact_answer']))]
-                if len(labels) > 1000:
-                    print(f"WARNING: id={row['id']} is list-type label and has {len(labels)} combinations. Truncating to 10 synonyms max.")
-                    labels = [', '.join(combination) for combination in list(itertools.product(*([e[:10] for e in row['exact_answer']])))]
-                    if len(labels) > 1000:
-                        print(f"    WARNING: After 10-truncation -> {len(labels)} labels. Truncating to 2 synonyms and 10 elements.")
-                        labels = [', '.join(combination) for combination in list(itertools.product(*([e[:2] for e in row['exact_answer']][:10])))]
-                        print(f"    WARNING: After final truncation -> {len(labels)} labels.")
-                dataset["label"].append(labels)
-            elif row['type'] == 'yesno':
-                dataset['label'].append([row['exact_answer']])
-            elif row['type'] == 'factoid':
-                if isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], list) and len(row['exact_answer']) == 1:
-                    dataset['label'].append(row['exact_answer'][0])
-                elif isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], str):
-                    dataset['label'].append(row['exact_answer'])
-                else:
-                    raise ValueError(f"unexpected parsing label for {row['id']}: {row['exact_answer']}")
-            else:
-                raise ValueError(f"Unexpected question type {row['type']}")
-            
-            dataset["id"].append(row["id"])
-            dataset["content"].append(row["body"])
-            dataset["type"].append(row["type"])
-
-
-        assert len(dataset["id"]) == len(dataset["content"]) == len(dataset["label"]), "id content and labels lengths are not the same"
-        dataset = datasets.Dataset.from_dict(dataset)
-        return dataset
-
-
-
-class BIOASQ12B(Processor):
-    """ 
-    BIOASQ Benchmark from bioasq challenge source, year 2024 task B (12B)
-    To get a larger training set we merge the official train and validation sets and fix the validation size to 1200 and train size to the rest (= 4189 rows)
-    We then discard all 'summary' question types from the validation set yielding a final val set with 940 rows
 
     - To re-process the official challenge raw data zip files, please provide the train_zip_path and dev_zip_path
     - To load an already processed version, provide the hf_path
@@ -702,6 +618,15 @@ class MultiQA_Reformulated(Processor):
             return example
         ds = ds.map(map_fn, num_proc=self.num_proc)
         return ds
+
+class MultiQA_Reformulated_Filtered(Processor):
+    def __init__(self, path, *args, **kwargs):
+        dataset_name = 'MultiQA_rf_filtered'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+        self.path = path
+
+    def process(self):
+        return datasets.load_from_disk(self.path)
     
 
 class TechQA(Processor):
@@ -1041,19 +966,14 @@ class MultiQA_distill_mistral7B(Processor):
     """
     Load MultiQA train split generations by mistral-7B
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, path: str, *args, **kwargs):
         dataset_name = 'MultiQA_distill_mistral7B'
+        self.path = path # path to eval_dev_out.json (generations of mistral-7b)
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
-        paths = ["/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_0_110000/eval_train_out.json",
-                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_110000_220000/eval_train_out.json",
-                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_220000_330000/eval_train_out.json",
-                 "/beegfs/scratch/project/calmar/data/combined_qa_distillation/mistral_distillation/mistral_distillation_330000_-1/eval_train_out.json"]
-        all_data = []
-        for path in paths:
-            with open(path, 'r') as f:
-                data = json.load(f)
-                all_data.extend([{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "instruction": d["instruction"], "true_label":d["label"]} for d in data])
+        with open(self.path, 'r') as f:
+            data = json.load(f)
+            all_data = [{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "instruction": d["instruction"], "true_label":d["label"]} for d in data]
         dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_data))
         return dataset

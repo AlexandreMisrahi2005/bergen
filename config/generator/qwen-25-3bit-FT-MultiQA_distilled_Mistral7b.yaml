@@ -1,0 +1,8 @@
+init_args: 
+  _target_: models.generators.llm.LLM
+  model_name: "experiments/FT/FT_multiqa_distillmistral7B_qwen25_3B_lora_splade_deberta_basicprompt_1epoch/train/checkpoint-56620"
+  max_new_tokens: 128
+  max_length: 2048
+  quantization: "int4"
+  batch_size: 32
+  local_path: True

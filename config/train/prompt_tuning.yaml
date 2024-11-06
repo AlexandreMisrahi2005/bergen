@@ -6,7 +6,7 @@ gradient_checkpointing: True
 trainer:
   dataloader_num_workers: 2
   eval_accumulation_steps: 4
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 1
   num_train_epochs: 1
   weight_decay: 0.1
   warmup_ratio: 0.05
@@ -15,10 +15,5 @@ trainer:
   per_device_eval_batch_size: 8
   bf16: True
   report_to: "wandb"
-lora: 
-  target_modules: "all-linear"
-  lora_alpha: 64
-  lora_dropout: 0.1
-  r: 32
-  bias: "none"
-  task_type: "CAUSAL_LM"
+prompt_tuning: 
+  prompt_tuning_init_text: "You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible."

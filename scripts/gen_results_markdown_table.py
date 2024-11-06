@@ -2,24 +2,48 @@ import os
 import json
 
 ### Choose dataset directories to report
-dataset_dirs = [
-    'experiments/bioasq12b',
-    'experiments/paraphraserc',
-    'experiments/techqa',
-    'experiments/syllabusQA',
-    'experiments/covidqa',
-    'experiments/robustqa_lifestyle',
-    'experiments/robustqa_recreation',
-    'experiments/robustqa_science',
-    'experiments/robustqa_technology',
-    'experiments/robustqa_writing',
-    'experiments/fiqa',
-    'experiments/searchqa',
-]
+# dataset_dirs = [
+#     'experiments/bioasq12b',
+#     'experiments/paraphraserc',
+#     'experiments/techqa',
+#     'experiments/syllabusQA',
+#     'experiments/covidqa',
+#     'experiments/robustqa_lifestyle',
+#     'experiments/robustqa_recreation',
+#     'experiments/robustqa_science',
+#     'experiments/robustqa_technology',
+#     'experiments/robustqa_writing',
+#     'experiments/fiqa',
+#     'experiments/searchqa',
+# ]
 
 # dataset_dirs = [
 #     'experiments/base_or_instruct/bioasq',
 # ]
+
+# dataset_dirs = [
+#     "experiments/bioasq12b/compare_3B_models",
+# ]
+
+# dataset_dirs = [
+#     "experiments/benchmarks_qwen", 
+#     "experiments/benchmarks_solar",
+# ]
+
+# dataset_dirs = [
+#     "experiments/bioasq12b/prompts",
+#     "experiments/covidqa/prompts",
+#     "experiments/fiqa/prompts",
+# ]
+
+dataset_dirs = [
+    "experiments/benchmarks_qwen",
+    "experiments/benchmarks_qwen_FT_MultiQA_distilled_mistral7b",
+]
+
+dataset_dirs = [
+    "experiments/benchmarks_bioasq11b",
+]
 
 subdirs_of_interest = [sorted(next(os.walk(dataset_dirs[i]))[1]) if os.path.exists(dataset_dirs[i]) else None for i in range(len(dataset_dirs)) ]
 

@@ -497,7 +497,7 @@ class RAG:
 
     def train(self):
         from transformers import TrainingArguments, Trainer
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PromptTuningInit, PromptTuningConfig, TaskType, PeftConfig
         from modules.dataset import Tokenized_Sorted_Dataset
         from omegaconf import ListConfig
 
@@ -656,6 +656,7 @@ class RAG:
             eval_dataset=train_test_datasets['test'],
         )
         trainer.evaluate()
+        # torch.set_grad_enabled(True)
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         self.generator.model = trainer.model
         

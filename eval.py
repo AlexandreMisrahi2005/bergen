@@ -18,6 +18,7 @@ class Evaluate:
                 folders = [folder]
             else:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+            folders_processed = 0
             for experiment_folder in folders:
     
                 print('evaluating', experiment_folder)
@@ -39,6 +40,7 @@ class Evaluate:
                     if metric_name in metrics_dict and not force:
                         print (f"{experiment_folder}\t{metric_name}\talready done")
                         continue
+                    folders_processed += 1
                     
                     predictions = data['response'].values
                     references = data['label'].values
@@ -69,6 +71,7 @@ class Evaluate:
                         json.dump(metrics_dict, fp, indent=2)
                     # when writing successful remove tmp file
                     shutil.move(metrics_file + '_', metrics_file)
+            return folders_processed
     
         if bem:
             from models.evaluators.bem import BEM
@@ -121,7 +124,8 @@ class Evaluate:
             if llm_batch_size == None:
                 llm_batch_size = 1        
             model = OllamaEval(model_config, batch_size=llm_batch_size, config=llm_prompt, basic_url=ollama_url)
-            eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples)
+            while eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples) > 0:
+                pass
             
         if lid is not None or lid_advanced is not None:
             from models.evaluators.lid import LID
