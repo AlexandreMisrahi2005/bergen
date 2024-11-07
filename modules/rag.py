@@ -655,8 +655,10 @@ class RAG:
             train_dataset=train_test_datasets['train'],
             eval_dataset=train_test_datasets['test'],
         )
-        trainer.evaluate()
-        # torch.set_grad_enabled(True)
+        print("trainer evaluate")
+        print(trainer.evaluate())
+        import sys
+        sys.exit()
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         self.generator.model = trainer.model
         

@@ -1,9 +1,10 @@
 '''
-Implementation of Differential Transformer mechanism for transformers' LlamaAttention class
+Implementation of Differential Attention mechanism for transformers' LlamaAttention class
 '''
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Callable
+from collections import OrderedDict
 
 import torch
 import torch.nn.functional as F
@@ -24,12 +25,12 @@ def lambda_init_fn(layer_idx: int = None) -> float:
 class LlamaLoraDiffAttention(LlamaAttention):
     """Multi-headed differential attention from 'Differential Transformer' paper: https://arxiv.org/abs/2410.05258"""
 
-    def __init__(self, config: LlamaConfig, layer_idx: int, lora_config: dict):
+    def __init__(self, config: LlamaConfig, layer_idx: int, lora_config: dict, lambda_init_fn: Callable = lambda_init_fn):
         super().__init__(config, layer_idx)
 
         self.lora_config = lora_config
 
-        self.lambda_init = lambda_init_fn()
+        self.lambda_init = lambda_init_fn(layer_idx)
         # self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
         # self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
         # self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
@@ -238,10 +239,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
         self.wk_lora_B2.weight.data = layer.self_attn.wk_lora_B2.weight.data
 
     def init_weights(self):
-        """
-        Init LoRA Bs to 0
-        Init lambdas close to 0 with normal distrib
-        """
         # same init as https://github.com/huggingface/peft/blob/a4f35971cda2bace54b297ad797ebc98a8f50292/src/peft/tuners/lora/layer.py#L158
         nn.init.kaiming_uniform_(self.wq_lora_A1.weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
@@ -257,3 +254,13 @@ class LlamaLoraDiffAttention(LlamaAttention):
         # nn.init.normal_(self.lambda_k1, mean=0, std=0.01)
         # nn.init.normal_(self.lambda_q2, mean=0, std=0.01)
         # nn.init.normal_(self.lambda_k2, mean=0, std=0.01)
+
+    def reset_weights_from_base_model(self):
+        """
+        Reset the weights W_Q, W_K, W_V, W_O
+        """
+        nn.init.kaiming_uniform_(self.q_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.k_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.v_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.o_proj.weight, a=math.sqrt(5))
+

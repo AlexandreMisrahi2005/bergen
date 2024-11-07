@@ -28,6 +28,9 @@ class LLM(BaseLLM):
                 quantization: str = None,
                 attn_implementation: str = "flash_attention_2",
                 path: str = None, # path to a local checkpoint
+                diff_attn_init_with_base_weights: bool = True,
+                diff_attn_lambda: float = 0.0,
+                verbose: bool = False,
                 ):
         """
         :model_name: hf model name or path to a local checkpoint
@@ -37,6 +40,7 @@ class LLM(BaseLLM):
         :local_path: forces only local reading (i.e. no hf download)
         path: path to a local checkpoint, will load the model weights from this path
         """
+
         Generator.__init__(self,
                            model_name=model_name,
                            batch_size=batch_size,
@@ -49,6 +53,7 @@ class LLM(BaseLLM):
         #     attn_implementation="sdpa"
 
         self.path = path
+        self.verbose = verbose
         self.model = AutoModelForCausalLM.from_pretrained(
                 path if path else model_name,
                 attn_implementation=attn_implementation,
@@ -65,7 +70,7 @@ class LLM(BaseLLM):
                 layers_to_transform=list(range(0,32)),
                 )
         
-        self.load_diff_attn()
+        self.load_diff_attn(diff_attn_lambda, diff_attn_init_with_base_weights)
         
         self.tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", clean_up_tokenization_spaces=True)
 
@@ -85,30 +90,34 @@ class LLM(BaseLLM):
         self.model.config.pretraining_tp = 1
         self.prompt = prompt
 
-    def _init_weights(self, init_type="normal"):
-        pass
-
-    def load_diff_attn(self):
-        """ Load model architecture, with weights if path to weights is given """
+    def load_diff_attn(self, diff_attn_lambda, diff_attn_init_with_base_weights):
+        """ Load model architecture and initialize parameters + weights """
 
         # freeze all model parameters (including embedding and LM head)
         for param in self.model.parameters():
             param.requires_grad = False
 
         # apply diff attn
-        print("Setting LoraDiffAttention for layers ", self.lora_config.layers_to_transform)
+        if self.verbose:
+            print("Setting LoraDiffAttention for layers ", self.lora_config.layers_to_transform)
         if self.path:
             print("Loading model weights from ", self.path)
         for i,layer in enumerate(self.model.model.layers):
             if isinstance(layer.self_attn, LlamaAttention) and i in self.lora_config.layers_to_transform:
-                layer.self_attn = LlamaLoraDiffAttention(self.model.config, layer_idx=i, lora_config=self.lora_config).to(self.model.device)
-                if self.path: # load weights if model is loaded from a checkpoint
+                layer.self_attn = LlamaLoraDiffAttention(self.model.config, layer_idx=i, lora_config=self.lora_config, lambda_init_fn=lambda _: diff_attn_lambda).to(self.model.device)
+                if self.path: # load weights from a checkpoint
                     layer.self_attn.load_weights(self.model.model.layers[i])
+                elif not diff_attn_init_with_base_weights: # copy common weights from base model
+                    layer.self_attn.reset_weights_from_base_model()
             else: # freeze model parameters
                 for param in layer.parameters():
                     param.requires_grad = False
 
-        print("Model loaded.")
+        if self.verbose:
+            print("Model loaded.")
+            self.print_layers()
+
+    def print_layers(self):
         print(self.model)
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
