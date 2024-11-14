@@ -36,6 +36,7 @@ class KILTNQ_Reformulated(Processor):
             example['label'] = [example["label"]]
             return example
         ds = ds.map(map_fn, num_proc=self.num_proc)
+        ds = ds.filter(lambda x: len(x['label'][0]) < 400, num_proc=self.num_proc)
         return ds
 
 class KILTTriviaqa(Processor):

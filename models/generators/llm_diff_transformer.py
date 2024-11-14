@@ -5,10 +5,14 @@ import gc
 import torch
 import warnings
 
+from typing import List
+from omegaconf import OmegaConf
+
 from peft import AutoPeftModelForCausalLM, PeftConfig, LoraConfig
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from transformers.models.llama.modeling_llama import LlamaAttention
-from models.generators.DiffTransformer.LlamaDiffAttention import LlamaLoraDiffAttention
+from models.generators.DiffTransformer.LlamaLoraDiffTransformerModel import LlamaLoraDiffTransformerForCausalLM
+from models.generators.DiffTransformer.LlamaLoraDiffTransformerConfig import LlamaLoraDiffTransformerConfig
 
 from utils import prepare_labels, left_pad
 from models.generators.generator import Generator
@@ -18,6 +22,10 @@ random.seed(42)
 
 
 class LLM(BaseLLM):
+    """
+    Slightly different from LLM as the new architecture is not necessarily pre-trained so we cannot use AutoModel.from_pretrained() directly.
+    We need to treat cases for different initialization of the model.
+    """
     def __init__(self, 
                 model_name: str = None,
                 batch_size: int = 1, 
@@ -26,11 +34,9 @@ class LLM(BaseLLM):
                 max_length: int = None,
                 prompt: str = None,
                 quantization: str = None,
-                attn_implementation: str = "flash_attention_2",
-                path: str = None, # path to a local checkpoint
-                diff_attn_init_with_base_weights: bool = True,
-                diff_attn_lambda: float = 0.0,
-                verbose: bool = False,
+                model_config: dict = None,
+                attn_implementation: str = "eager",
+                base_model_name: str = None,
                 ):
         """
         :model_name: hf model name or path to a local checkpoint
@@ -52,25 +58,63 @@ class LLM(BaseLLM):
         # if "A100" not in torch.cuda.get_device_name(torch.cuda.current_device):
         #     attn_implementation="sdpa"
 
-        self.path = path
-        self.verbose = verbose
-        self.model = AutoModelForCausalLM.from_pretrained(
-                path if path else model_name,
-                attn_implementation=attn_implementation,
-                torch_dtype=torch.bfloat16,
-                device_map='auto',
-            )
-        
-        self.lora_config = LoraConfig(
-                target_modules=["q_proj", "k_proj"],
-                lora_alpha=64,
-                r=32,
-                lora_dropout=0.1,
-                task_type="CAUSAL_LM",
-                layers_to_transform=list(range(0,32)),
+        if attn_implementation != "eager" and model_config.layers_to_transform != list(range(0,32)):
+            warnings.warn("Attn implementation is not 'eager' and not all attention layers are set to differential attention; the model might run but generate degraded results.")
+        self.model_config = OmegaConf.to_container(model_config)
+        self.verbose = model_config.verbose
+        if model_name is not None: # we are loading a model pre-trained with the custom architecture. nothing to do, same as BaseLLM
+            if quantization == "int4":
+                quant_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type='nf4',
+                    bnb_4bit_compute_dtype='bfloat16',
                 )
-        
-        self.load_diff_attn(diff_attn_lambda, diff_attn_init_with_base_weights)
+
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        quantization_config=quant_config,
+                        attn_implementation=attn_implementation,
+                        torch_dtype=torch.bfloat16,
+                        device_map='auto',
+                    )
+            # TODO: add other quantization cases
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        attn_implementation=attn_implementation,
+                        torch_dtype=torch.bfloat16,
+                        device_map='auto',
+                    )
+
+        elif base_model_name is not None: # otherwise we initialize the model and possibly load the base model weights
+            # note in this case we do not implement quantization. If really we want quantization we would have to first load the model using the methods below (without quantization), then use save_pretrained() to save the model (without quantization) and then load it with quantization
+
+            assert base_model_name is not None, "`diff_attn_init_with_base_weights` is True but `base_model_name` is not provided."
+            # here we load the base model, for example llama3-8b, and in load_diff_attn() we will save the required weights for proper initialization of the differential attention modules
+            diff_transformer_config = OmegaConf.to_container(model_config)
+            base_config = AutoConfig.from_pretrained(base_model_name) # some transformers config like LlamaConfig
+            # concatenate base model config and diff transformer config to make a copy of the base model with the differential attention layers
+            concat_config = {**base_config.to_dict(), **diff_transformer_config}
+
+            base_model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name, 
+                    attn_implementation=attn_implementation,
+                    torch_dtype=torch.bfloat16,
+                    device_map='auto',
+                )
+            
+            self.model = self.load_diff_attn_model(base_model, concat_config)
+            
+
+            del base_model
+            gc.collect()
+
+            if self.verbose:
+                print("=== DIFF ATTN MODEL LOADED ===")
+                self.print_layers()
+
+        else:
+            raise ValueError("Model not found. Please provide a model name or a path to a local checkpoint.")
         
         self.tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", clean_up_tokenization_spaces=True)
 
@@ -82,40 +126,35 @@ class LLM(BaseLLM):
         else:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # TODO: quantization
-
         self.model = self.model.bfloat16()
 
         self.model.eval()
         self.model.config.pretraining_tp = 1
         self.prompt = prompt
 
-    def load_diff_attn(self, diff_attn_lambda, diff_attn_init_with_base_weights):
+    def load_diff_attn_model(self, base_model, concat_config):
         """ Load model architecture and initialize parameters + weights """
 
-        # freeze all model parameters (including embedding and LM head)
-        for param in self.model.parameters():
-            param.requires_grad = False
+        # initialize diff attn model
+        config = LlamaLoraDiffTransformerConfig(**concat_config)
+        model = LlamaLoraDiffTransformerForCausalLM(config).to(base_model.device)
 
-        # apply diff attn
+        # load the state dict of the base model everywhere (except the custom parameters of the attention layers)
+        missing_keys, unexpected_keys = model.load_state_dict(base_model.state_dict(), strict=False) # TODO: maybe a for loop to load modules 1 by 1 and free memory so we don't store 2 models at the same time
         if self.verbose:
-            print("Setting LoraDiffAttention for layers ", self.lora_config.layers_to_transform)
-        if self.path:
-            print("Loading model weights from ", self.path)
-        for i,layer in enumerate(self.model.model.layers):
-            if isinstance(layer.self_attn, LlamaAttention) and i in self.lora_config.layers_to_transform:
-                layer.self_attn = LlamaLoraDiffAttention(self.model.config, layer_idx=i, lora_config=self.lora_config, lambda_init_fn=lambda _: diff_attn_lambda).to(self.model.device)
-                if self.path: # load weights from a checkpoint
-                    layer.self_attn.load_weights(self.model.model.layers[i])
-                elif not diff_attn_init_with_base_weights: # copy common weights from base model
+            print("Missing keys: ", missing_keys) # we expect missing keys for the diff attn lora layers
+            print("Unexpected keys: ", unexpected_keys)
+            assert len(unexpected_keys) == 0, "Unexpected keys found in the model state dict. Please check the model architecture."
+            for key in missing_keys:
+                assert "lora" in key, f"Missing key {key}"
+
+        # optionally reset all attn weights
+        if not config.diff_attn_init_with_base_weights:
+            print("Resetting attn weights for layer(s) ", config.layers_to_transform)
+            for i,layer in enumerate(model.model.layers):
+                if i in config.layers_to_transform:
                     layer.self_attn.reset_weights_from_base_model()
-            else: # freeze model parameters
-                for param in layer.parameters():
-                    param.requires_grad = False
-
-        if self.verbose:
-            print("Model loaded.")
-            self.print_layers()
+        return model
 
     def print_layers(self):
         print(self.model)
@@ -124,7 +163,10 @@ class LLM(BaseLLM):
         print("trainable params: ", trainable_params, "     ||      total params: ", total_params)
         print("percent trainable: ", 100 * trainable_params / total_params, '%')
         # at which layer are trainable params?
-        for i,layer in enumerate(self.model.model.layers):
-            num_params = sum(p.numel() for p in layer.parameters() if p.requires_grad)
-            if num_params > 0:
-                print("layer ", i, " has ", num_params, " trainable params out of ", sum(p.numel() for p in layer.parameters()), " total params")
+        if len(set([(sum(p.numel() for p in layer.parameters() if p.requires_grad), sum(p.numel() for p in layer.parameters())) for layer in self.model.model.layers])) == 1:
+            print("All layers have ", sum(p.numel() for p in self.model.model.layers[0].parameters() if p.requires_grad), " trainable params out of ", sum(p.numel() for p in self.model.model.layers[0].parameters()), " total params")
+        else:
+            for i,layer in enumerate(self.model.model.layers):
+                num_params = sum(p.numel() for p in layer.parameters() if p.requires_grad)
+                if num_params > 0:
+                    print("layer ", i, " has ", num_params, " trainable params out of ", sum(p.numel() for p in layer.parameters()), " total params")

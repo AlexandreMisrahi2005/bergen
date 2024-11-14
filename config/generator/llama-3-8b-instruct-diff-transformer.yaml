@@ -1,10 +1,17 @@
 init_args: 
   _target_: models.generators.llm_diff_transformer.LLM
-  model_name: "meta-llama/Meta-Llama-3-8B-Instruct"
+  base_model_name: "meta-llama/Meta-Llama-3-8B-Instruct"
+  model_name: null
   max_new_tokens: 128
   max_length: 2048
   batch_size: 32
-  path: null
-  diff_attn_init_with_base_weights: True
-  diff_attn_lambda: 0.001
-  verbose: True
+  quantization: null
+  model_config:
+    diff_attn_lambda: 0.00
+    layers_to_transform: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
+    diff_attn_init_with_base_weights: True
+    lora_negative_term_only: False
+    attention_lora_alpha: 64
+    attention_lora_r: 32
+    attention_lora_dropout: 0.1
+    verbose: True
