@@ -439,6 +439,22 @@ class RAG:
                                                dataset_split)
         
         generation_start = time.time()
+        print("generator model layer 0 wq_lora_A1", self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wq_lora_A2", self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wq_lora_B1", self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wq_lora_B2", self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wk_lora_A1", self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wk_lora_A2", self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wk_lora_B1", self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.clone().detach()[0,:3])
+        print("generator model layer 0 wk_lora_B2", self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wq_lora_A1", self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wq_lora_A2", self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wq_lora_B1", self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wq_lora_B2", self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wk_lora_A1", self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wk_lora_A2", self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wk_lora_B1", self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.clone().detach()[0,:3])
+        print("generator model layer 31 wk_lora_B2", self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.clone().detach()[0,:3])
         query_ids, questions, instructions, predictions, references, ranking_labels  = self.generator.eval(gen_dataset)
         generation_time = time.time() - generation_start
         write_generated(
@@ -623,6 +639,7 @@ class RAG:
                 )
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
+            print("Model after inputting loradapters: \n", self.generator.model)
             self.generator.model.print_trainable_parameters()
             self.generator.model = self.generator.model.bfloat16()
 
@@ -642,7 +659,6 @@ class RAG:
             eval_steps=eval_steps,
             save_steps=save_steps,
             logging_steps=logging_steps,
-            load_best_model_at_end=True,
             remove_unused_columns=False,
         )
         
@@ -655,11 +671,27 @@ class RAG:
             train_dataset=train_test_datasets['train'],
             eval_dataset=train_test_datasets['test'],
         )
-        print("trainer evaluate")
+        print("init_model layer 0 wq_lora_A1", self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_A1.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wq_lora_A2", self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_A2.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wq_lora_B1", self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_B1.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wq_lora_B2", self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wq_lora_B2.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wk_lora_A1", self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_A1.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wk_lora_A2", self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_A2.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wk_lora_B1", self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_B1.weight.clone().detach()[0,:3])
+        print("init_model layer 0 wk_lora_B2", self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.clone().detach()), self.generator.model.model.layers[0].self_attn.wk_lora_B2.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wq_lora_A1", self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_A1.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wq_lora_A2", self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_A2.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wq_lora_B1", self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_B1.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wq_lora_B2", self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wq_lora_B2.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wk_lora_A1", self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_A1.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wk_lora_A2", self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_A2.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wk_lora_B1", self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_B1.weight.clone().detach()[0,:3])
+        print("init_model layer 31 wk_lora_B2", self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.shape, torch.linalg.matrix_norm(self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.clone().detach()), self.generator.model.model.layers[31].self_attn.wk_lora_B2.weight.clone().detach()[0,:3])
+
+        print("trainer evaluate =")
         print(trainer.evaluate())
-        import sys
-        sys.exit()
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
+        print("== end training.")
         self.generator.model = trainer.model
         
         if gradient_ckpt_enabled:

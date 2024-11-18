@@ -5,23 +5,19 @@ import gc
 import torch
 import warnings
 
-from typing import List
 from omegaconf import OmegaConf
 
-from peft import AutoPeftModelForCausalLM, PeftConfig, LoraConfig
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from transformers.models.llama.modeling_llama import LlamaAttention
-from models.generators.DiffTransformer.LlamaLoraDiffTransformerModel import LlamaLoraDiffTransformerForCausalLM
-from models.generators.DiffTransformer.LlamaLoraDiffTransformerConfig import LlamaLoraDiffTransformerConfig
+from models.generators.DiffTransformer.llama_lora_diff_transformer_model import LlamaLoraDiffTransformerForCausalLM
+from models.generators.DiffTransformer.llama_lora_diff_transformer_config import LlamaLoraDiffTransformerConfig
 
-from utils import prepare_labels, left_pad
 from models.generators.generator import Generator
 from models.generators.llm import LLM as BaseLLM
 
 random.seed(42)
 
 
-class LLM(BaseLLM):
+class LLMDiffTransformer(BaseLLM):
     """
     Slightly different from LLM as the new architecture is not necessarily pre-trained so we cannot use AutoModel.from_pretrained() directly.
     We need to treat cases for different initialization of the model.
@@ -60,8 +56,7 @@ class LLM(BaseLLM):
 
         if attn_implementation != "eager" and model_config.layers_to_transform != list(range(0,32)):
             warnings.warn("Attn implementation is not 'eager' and not all attention layers are set to differential attention; the model might run but generate degraded results.")
-        self.model_config = OmegaConf.to_container(model_config)
-        self.verbose = model_config.verbose
+        
         if model_name is not None: # we are loading a model pre-trained with the custom architecture. nothing to do, same as BaseLLM
             if quantization == "int4":
                 quant_config = BitsAndBytesConfig(
@@ -79,16 +74,19 @@ class LLM(BaseLLM):
                     )
             # TODO: add other quantization cases
             else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                        self.model_name,
-                        attn_implementation=attn_implementation,
-                        torch_dtype=torch.bfloat16,
-                        device_map='auto',
-                    )
+                self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, attn_implementation=attn_implementation, torch_dtype=torch.bfloat16, device_map='auto')
+                # self.model = AutoModelForCausalLM.from_pretrained(
+                #         self.model_name,
+                #         attn_implementation=attn_implementation,
+                #         torch_dtype=torch.bfloat16,
+                #         device_map='auto',
+                #     )
 
         elif base_model_name is not None: # otherwise we initialize the model and possibly load the base model weights
             # note in this case we do not implement quantization. If really we want quantization we would have to first load the model using the methods below (without quantization), then use save_pretrained() to save the model (without quantization) and then load it with quantization
 
+            self.model_config = OmegaConf.to_container(model_config)
+            self.verbose = model_config.verbose
             assert base_model_name is not None, "`diff_attn_init_with_base_weights` is True but `base_model_name` is not provided."
             # here we load the base model, for example llama3-8b, and in load_diff_attn() we will save the required weights for proper initialization of the differential attention modules
             diff_transformer_config = OmegaConf.to_container(model_config)
@@ -103,11 +101,14 @@ class LLM(BaseLLM):
                     device_map='auto',
                 )
             
-            self.model = self.load_diff_attn_model(base_model, concat_config)
+            # self.model = self.load_diff_attn_model(base_model, concat_config)
+            config = LlamaLoraDiffTransformerConfig(**concat_config)
+            self.model = LlamaLoraDiffTransformerForCausalLM(config, base_model=base_model).to(base_model.device)
             
 
             del base_model
             gc.collect()
+            torch.cuda.empty_cache()
 
             if self.verbose:
                 print("=== DIFF ATTN MODEL LOADED ===")
@@ -131,30 +132,6 @@ class LLM(BaseLLM):
         self.model.eval()
         self.model.config.pretraining_tp = 1
         self.prompt = prompt
-
-    def load_diff_attn_model(self, base_model, concat_config):
-        """ Load model architecture and initialize parameters + weights """
-
-        # initialize diff attn model
-        config = LlamaLoraDiffTransformerConfig(**concat_config)
-        model = LlamaLoraDiffTransformerForCausalLM(config).to(base_model.device)
-
-        # load the state dict of the base model everywhere (except the custom parameters of the attention layers)
-        missing_keys, unexpected_keys = model.load_state_dict(base_model.state_dict(), strict=False) # TODO: maybe a for loop to load modules 1 by 1 and free memory so we don't store 2 models at the same time
-        if self.verbose:
-            print("Missing keys: ", missing_keys) # we expect missing keys for the diff attn lora layers
-            print("Unexpected keys: ", unexpected_keys)
-            assert len(unexpected_keys) == 0, "Unexpected keys found in the model state dict. Please check the model architecture."
-            for key in missing_keys:
-                assert "lora" in key, f"Missing key {key}"
-
-        # optionally reset all attn weights
-        if not config.diff_attn_init_with_base_weights:
-            print("Resetting attn weights for layer(s) ", config.layers_to_transform)
-            for i,layer in enumerate(model.model.layers):
-                if i in config.layers_to_transform:
-                    layer.self_attn.reset_weights_from_base_model()
-        return model
 
     def print_layers(self):
         print(self.model)

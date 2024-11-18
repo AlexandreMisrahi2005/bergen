@@ -27,3 +27,5 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         self.attention_lora_dropout = attention_lora_dropout
         self.verbose = verbose
         super().__init__(**kwargs)
+
+LlamaLoraDiffTransformerConfig.register_for_auto_class()
