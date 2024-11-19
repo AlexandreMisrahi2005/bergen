@@ -60,9 +60,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size() # X = (batch, q_len, hidden_dim) where hidden_dim = num_heads * head_dim; note in QA task q_len > 1 in first pass and q_len=1 in next passes (context length);
-        # if q_len > 1:
-        #     print("\nBEGIN LlamaLoraDiffAttention.forward")
-        #     print(f"hidden_states min/max =", hidden_states.min(), hidden_states.max())
         if self.config.pretraining_tp > 1:
             raise NotImplementedError("Pretraining tensor parallel not implemented for LlamaDiffAttention")
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -90,11 +87,7 @@ class LlamaLoraDiffAttention(LlamaAttention):
                 key_states.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                 value_states.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
             )), f"query_states.size() = {query_states.size()}, key_states.size() = {key_states.size()}, value_states.size() = {value_states.size()}"
-            # if q_len > 1:
-            #     print("after projection")
-            #     print(f"query_states min/max =", query_states.min(), query_states.max())
-            #     print(f"key_states min/max =", key_states.min(), key_states.max())
-            #     print(f"value_states min/max =", value_states.min(), value_states.max())
+
             if not self.lora_negative_term_only:
                 lora_query_states_1 = self.wq_lora_B1(self.wq_lora_A1(self.lora_dropout(hidden_states))) * self.lora_scaling # X @ wq_A1 @ wq_B1 = (b, q_len, hidden_dim) @ (hidden_dim, r) @ (r, hidden_dim) = (b, q_len, hidden_dim)
             lora_query_states_2 = self.wq_lora_B2(self.wq_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as query_states_1
@@ -108,12 +101,7 @@ class LlamaLoraDiffAttention(LlamaAttention):
                     lora_key_states_1.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                     lora_key_states_2.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                 )), f"lora_query_states_1.size() = {lora_query_states_1.size()}, lora_query_states_2.size() = {lora_query_states_2.size()}, lora_key_states_1.size() = {lora_key_states_1.size()}, lora_key_states_2.size() = {lora_key_states_2.size()}"
-            # if q_len > 1:
-            #     print("lora projections")
-            #     print(f"lora_query_states_1 min/max =", lora_query_states_1.min(), lora_query_states_1.max())
-            #     print(f"lora_query_states_2 min/max =", lora_query_states_2.min(), lora_query_states_2.max())
-            #     print(f"lora_key_states_1 min/max =", lora_key_states_1.min(), lora_key_states_1.max())
-            #     print(f"lora_key_states_2 min/max =", lora_key_states_2.min(), lora_key_states_2.max())
+            
             if not self.lora_negative_term_only:
                 query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
                 key_states_1 = key_states + lora_key_states_1 # (b, q_len, self.num_key_value_heads * self.head_dim)
@@ -122,12 +110,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
                 key_states_1 = key_states
             query_states_2 = query_states + lora_query_states_2 # (b, q_len, hidden_dim)
             key_states_2 = key_states + lora_key_states_2 # (b, q_len, self.num_key_value_heads * self.head_dim)
-            # if q_len > 1:
-            #     print("after adding lora projections")
-            #     print(f"query_states_1 min/max =", query_states_1.min(), query_states_1.max())
-            #     print(f"query_states_2 min/max =", query_states_2.min(), query_states_2.max())
-            #     print(f"key_states_1 min/max =", key_states_1.min(), key_states_1.max())
-            #     print(f"key_states_2 min/max =", key_states_2.min(), key_states_2.max())
 
         query_states_1 = query_states_1.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
         query_states_2 = query_states_2.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
@@ -147,12 +129,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
             cos, sin = position_embeddings
         query_states_1, key_states_1 = apply_rotary_pos_emb(query_states_1, key_states_1, cos, sin)
         query_states_2, key_states_2 = apply_rotary_pos_emb(query_states_2, key_states_2, cos, sin)
-        # if q_len > 1:
-        #     print("after rotary emb")
-        #     print(f"query_states_1 min/max =", query_states_1.min(), query_states_1.max())
-        #     print(f"query_states_2 min/max =", query_states_2.min(), query_states_2.max())
-        #     print(f"key_states_1 min/max =", key_states_1.min(), key_states_1.max())
-        #     print(f"key_states_2 min/max =", key_states_2.min(), key_states_2.max())
 
         # TODO: check if this is correct
         if past_key_value is not None:
@@ -171,11 +147,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
                 value_states.size() == torch.Size([bsz, self.num_key_value_heads, total_q_len, self.head_dim]),
             )), f"key_states_1.size() = {key_states_1.size()}, key_states_2.size() = {key_states_2.size()}, value_states.size() = {value_states.size()}"
 
-        # if q_len > 1:
-        #     print("after past_key_value")
-        #     print(f"key_states_1 min/max =", key_states_1.min(), key_states_1.max())
-        #     print(f"key_states_2 min/max =", key_states_2.min(), key_states_2.max())
-        #     print(f"value_states min/max =", value_states.min(), value_states.max())
         total_q_len = key_states_1.size(-2)
         key_states_1 = repeat_kv(key_states_1, self.num_key_value_groups) # (b, num_key_value_heads, q_len, head_dim) -> (b, num_heads, q_len, head_dim)
         key_states_2 = repeat_kv(key_states_2, self.num_key_value_groups) # same
@@ -188,25 +159,15 @@ class LlamaLoraDiffAttention(LlamaAttention):
             value_states.size() == torch.Size([bsz, self.num_heads, total_q_len, self.head_dim]),
         )), f"query_states_1.size() = {query_states_1.size()}, query_states_2.size() = {query_states_2.size()}, key_states_1.size() = {key_states_1.size()}, key_states_2.size() = {key_states_2.size()}, value_states.size() = {value_states.size()}"
 
-        # if q_len > 1:
-        #     print("after repeat_kv")
-        #     print(f"query_states_1 min/max =", query_states_1.min(), query_states_1.max())
-        #     print(f"query_states_2 min/max =", query_states_2.min(), query_states_2.max())
-        #     print(f"key_states_1 min/max =", key_states_1.min(), key_states_1.max())
-        #     print(f"key_states_2 min/max =", key_states_2.min(), key_states_2.max())
-        #     print(f"value_states min/max =", value_states.min(), value_states.max())
         attn_weights_1 = torch.matmul(query_states_1, key_states_1.transpose(2, 3)) / math.sqrt(self.head_dim) # (b, num_heads, q_len, head_dim) @ (b, num_heads, q_len, head_dim).T(2,3) -> (b, num_heads, q_len, q_len)
         attn_weights_2 = torch.matmul(query_states_2, key_states_2.transpose(2, 3)) / math.sqrt(self.head_dim) # same
         assert all((
             attn_weights_1.size() == torch.Size([bsz, self.num_heads, q_len, total_q_len]),
             attn_weights_2.size() == torch.Size([bsz, self.num_heads, q_len, total_q_len]),
         )), f"attn_weights_1.size() = {attn_weights_1.size()}, attn_weights_2.size() = {attn_weights_2.size()}"
-        # if q_len > 1:
-        #     print("after matmul")
-        #     print(f"attn_weights_1 min/max =", attn_weights_1.min(), attn_weights_1.max())
-        #     print(f"attn_weights_2 min/max =", attn_weights_2.min(), attn_weights_2.max())
 
         if attention_mask is not None:  # no matter the length, we just slice it
+            # TODO: this can if loop probably be removed since attn_implementation bug is fixed
             if attention_mask.dim() == 2: # depending on gpu type and inference setup (training or not, flash-attention, etc) attention mask can be 2D or 4D
                 # Expand attention mask to 4D
                 attention_mask = attention_mask[:, None, None, :].expand(-1, 1, hidden_states.size(1), -1) # TODO: check this is correct (+ implement flash attention)
@@ -214,10 +175,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
             
             attn_weights_1 = attn_weights_1 + causal_mask
             attn_weights_2 = attn_weights_2 + causal_mask
-        # if q_len > 1:
-        #     print("after attention_mask")
-        #     print(f"attn_weights_1 min/max =", attn_weights_1.min(), attn_weights_1.max())
-        #     print(f"attn_weights_2 min/max =", attn_weights_2.min(), attn_weights_2.max())
 
         # upcast attention to fp32
         attn_weights_1 = nn.functional.softmax(attn_weights_1, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -233,13 +190,8 @@ class LlamaLoraDiffAttention(LlamaAttention):
         attn_weights = attn_weights_1 - lambda_full * attn_weights_2 # diff attn
         attn_output = torch.matmul(attn_weights, value_states) # (b, num_heads, q_len, q_len) @ (b, num_heads, q_len, head_dim) -> (b, num_heads, q_len, head_dim)
         assert attn_output.size() == torch.Size([bsz, self.num_heads, q_len, self.head_dim]), f"attn_output.size() = {attn_output.size()}"
-        # if q_len > 1:
-        #     print("after projecting to new values")
-        #     print(f"attn_output min/max =", attn_output.min(), attn_output.max())
+
         attn_output = attn_output * (1 - self.lambda_init)
-        # if q_len > 1:
-        #     print("after lambda rescale")
-        #     print(f"attn_output min/max =", attn_output.min(), attn_output.max())
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -250,9 +202,6 @@ class LlamaLoraDiffAttention(LlamaAttention):
         attn_output = attn_output.transpose(1, 2).contiguous()
 
         attn_output = attn_output.reshape(bsz, q_len, -1)
-
-        # if q_len > 1:
-        #     print(f"attn_output min/max =", attn_output.min(), attn_output.max())
 
         if self.config.pretraining_tp > 1:
             raise NotImplementedError("Pretraining tensor parallel not implemented for LlamaDiffAttention")
@@ -398,9 +347,9 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
         config = LlamaLoraDiffTransformerConfig.from_pretrained(pretrained_model_name_or_path)
         base_model_path = config._name_or_path # something like meta-llama/Meta-Llama-3-8B-Instruct
 
-        with warnings.catch_warnings(): 
-            warnings.filterwarnings("ignore", message=r".*Some weights of .* were not initialized from the model checkpoint at .* and are newly initialized:.*")
-            model = super().from_pretrained(base_model_path, *model_args, config=config, cache_dir=cache_dir, ignore_mismatched_sizes=ignore_mismatched_sizes, force_download=force_download, local_files_only=local_files_only, token=token, revision=revision, use_safetensors=use_safetensors, weights_only=weights_only, **kwargs)
+        print("=============== YOU CAN SAFELY IGNORE THE WARNING BELOW ===============")
+        model = super().from_pretrained(base_model_path, *model_args, config=config, cache_dir=cache_dir, ignore_mismatched_sizes=ignore_mismatched_sizes, force_download=force_download, local_files_only=local_files_only, token=token, revision=revision, use_safetensors=use_safetensors, weights_only=weights_only, **kwargs)
+        print("=============== YOU CAN SAFELY IGNORE THE WARNING ABOVE ===============")
 
         # Now we load the adapters. Load all the model.safetensors files TODO: cleaner with cases if multiple shards
         adapters_state_dict = load_file(f"{pretrained_model_name_or_path}/model.safetensors")
@@ -424,12 +373,13 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
         assert len(unexpected_keys) == 0, f"{len(unexpected_keys)} unexpected keys found in the model state dict: \n{unexpected_keys}"
         if self.config.verbose:
             print("Loaded diff attn weights.")
-            print("Num missing keys =", len(missing_keys))
+            print("Num missing keys when loading adapters =", len(missing_keys))
+            print("Num keys that are not LoRA = ", len([key for key in self.state_dict().keys() if 'lora' not in key]))
+
             
     def load_base_weights_and_adapters(self, concat_state_dict):
         missing_keys, unexpected_keys = self.load_state_dict(concat_state_dict, strict=True)
         assert len(missing_keys) == 0 and len(unexpected_keys) == 0, f"Missing keys = {len(missing_keys)} || Unexpected keys = {len(unexpected_keys)}"
-
 
 
 LlamaLoraDiffTransformerForCausalLM.register_for_auto_class("AutoModelForCausalLM")
