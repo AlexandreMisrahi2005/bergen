@@ -64,7 +64,7 @@ class Evaluate:
                         else:
                             metrics_dict.update({f'{k}_{nb_samples}':model_score[k] for k in model_score})      
 
-                        for k in scores:
+                        for k in range(len(scores)):
                             data[k] = scores[k]
                         pass
                     else:
@@ -164,19 +164,21 @@ class Evaluate:
                 if not config['generator']['init_args']['model_name'] == model_name :
                     try:
                         generator['init_args']['_target_'] = generator['init_args']['_target_'].replace('vllm', 'llm')
+                        generator['init_args']['model_name'] = generator['init_args']['model_name'].replace('tmp_', '')
                         
                         model = LLM_att(generator, prompt)   
 
                         model_name = config['generator']['init_args']['model_name']
 
-                    except:
+                    except Exception as e:
                         print("Skip", folder, model_name )
+                        print(e)
                         continue
                 else:
                     #if other folder used the same generator, do not load it again, but update prompt
                     model.llm.model.prompt = prompt
                 short_name = "att"
-                eval_single(experiment_folder, folder, split, model, short_name)
+                eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples)
         
         if llm_ll is not None :
             from models.evaluators.llm_ll import LLM_LL

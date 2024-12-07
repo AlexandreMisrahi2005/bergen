@@ -104,7 +104,6 @@ class LLMDiffTransformer(BaseLLM):
             # self.model = self.load_diff_attn_model(base_model, concat_config)
             config = LlamaLoraDiffTransformerConfig(**concat_config)
             self.model = LlamaLoraDiffTransformerForCausalLM(config, base_model=base_model).to(base_model.device)
-            
 
             del base_model
             gc.collect()

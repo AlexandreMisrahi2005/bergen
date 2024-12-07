@@ -247,7 +247,7 @@ class RAG:
                  dataset_split, 
                  retrieve_top_k,
                  train_with_k_distractors=0,
-                 eval_ranking=True,
+                 eval_ranking=False,
                  ):
         
         ranking_file = get_ranking_filename(
@@ -365,22 +365,22 @@ class RAG:
             # copy reranking file to experiment folder 
             shutil.copyfile(reranking_file, f'{self.experiment_folder}/{reranking_file.split("/")[-1]}')
             query_ids, doc_ids, scores = load_trec(reranking_file)
-        if 'ranking_label' in self.datasets[dataset_split]['query'].features:
-            print('Evaluating retrieval...')
-            wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
-            eval_retrieval_kilt(
-                self.experiment_folder, 
-                self.qrels_folder, 
-                query_dataset_name, 
-                doc_dataset_name,
-                dataset_split, 
-                query_ids, 
-                wiki_doc_ids, 
-                scores, 
-                top_k=self.generation_top_k, 
-                reranking=True, 
-                debug=self.debug
-                )
+        # if 'ranking_label' in self.datasets[dataset_split]['query'].features:
+        #     print('Evaluating retrieval...')
+        #     wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
+        #     eval_retrieval_kilt(
+        #         self.experiment_folder, 
+        #         self.qrels_folder, 
+        #         query_dataset_name, 
+        #         doc_dataset_name,
+        #         dataset_split, 
+        #         query_ids, 
+        #         wiki_doc_ids, 
+        #         scores, 
+        #         top_k=self.generation_top_k, 
+        #         reranking=True, 
+        #         debug=self.debug
+        #         )
         return query_ids, doc_ids, scores
 
     def process_context(self, gen_dataset, 
@@ -624,6 +624,13 @@ class RAG:
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
             print("Model after inputting loradapters: \n", self.generator.model)
+            try:
+                from models.generators.llm_diff_transformer import LLMDiffTransformer
+            except ImportError:
+                print("LLMDiffTransformer not found after LoRA init. May lead to unexpected training behavior.")
+            if isinstance(self.generator, LLMDiffTransformer):
+                # reactivate the parameters because peft freezes everything from the base model
+                self.generator.model.unfreeze_adapters()
             self.generator.model.print_trainable_parameters()
             self.generator.model = self.generator.model.bfloat16()
 
@@ -657,8 +664,9 @@ class RAG:
             eval_dataset=train_test_datasets['test'],
         )
 
-        print("trainer evaluate =")
+        print("before training, trainer evaluate =")
         print(trainer.evaluate())
+        print("== start training ==")
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         print("== end training ==")
 

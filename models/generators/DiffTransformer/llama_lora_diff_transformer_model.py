@@ -12,8 +12,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from safetensors.torch import load_file
+from transformers.generation.utils import GenerationMixin
 from transformers.modeling_utils import PretrainedConfig, PreTrainedModel
-from transformers.models.llama.modeling_llama import LlamaPreTrainedModel, LlamaForCausalLM, LlamaModel, LlamaAttention, apply_rotary_pos_emb, repeat_kv
+from transformers.models.llama.modeling_llama import LlamaPreTrainedModel, LlamaForCausalLM, LlamaModel, LlamaAttention, LlamaRMSNorm, apply_rotary_pos_emb, repeat_kv
 from transformers.models.llama.configuration_llama import LlamaConfig
 from models.generators.DiffTransformer.llama_lora_diff_transformer_config import LlamaLoraDiffTransformerConfig
 from transformers.cache_utils import Cache
@@ -21,16 +22,24 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
+def lambda_init_fn(depth):
+    return 0.8 - 0.6 * math.exp(-0.3 * depth)
+
 class LlamaLoraDiffAttention(LlamaAttention):
     """Multi-headed differential attention from 'Differential Transformer' paper: https://arxiv.org/abs/2410.05258"""
 
     def __init__(self, config: LlamaLoraDiffTransformerConfig, layer_idx: int):
         super().__init__(config, layer_idx)
-        self.lambda_init = config.diff_attn_lambda
-        # self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
-        # self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
-        # self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
-        # self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
+        self.learn_lambda = config.learn_lambda
+        if self.learn_lambda:
+            self.lambda_init = lambda_init_fn(layer_idx)
+            self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
+            self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
+            self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
+            self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
+        else:
+            self.lambda_init = config.diff_attn_lambda
+
         self.lora_negative_term_only = config.lora_negative_term_only
         if not self.lora_negative_term_only:
             self.wq_lora_A1 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
@@ -45,7 +54,10 @@ class LlamaLoraDiffAttention(LlamaAttention):
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r
-        self.freeze_parameters(config)
+        self.subln = None
+        if config.groupnorm:
+            self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5)
+        # self.freeze_parameters(config)
         
     def forward(
         self,
@@ -79,7 +91,7 @@ class LlamaLoraDiffAttention(LlamaAttention):
             value_states = torch.cat(value_states, dim=-1)
 
         else:
-            query_states = self.q_proj(hidden_states) # X @ W_q = (b, q_len, hidden_dim) @ (hidden_dim, self.num_heads * self.head_dim) = (b, q_len, self.num_heads * self.head_dim)  where self.num_heads * self.head_dim = hidden_dim = 4096
+            query_states = self.q_proj(hidden_states) # X @ W_q = (b, q_len, hidden_dim) @ (hidden_dim, self.num_heads * self.head_dim) = (b, q_len, self.num_heads * self.head_dim)  where self.num_heads * self.head_dim = hidden_dim = 32*128 = 4096
             key_states = self.k_proj(hidden_states)   # X @ W_k = (b, q_len, hidden_dim) @ (hidden_dim, self.num_key_value_heads * self.head_dim) = (b, q_len, self.num_key_value_heads * self.head_dim)
             value_states = self.v_proj(hidden_states) # X @ W_v = (b, q_len, hidden_dim) @ (hidden_dim, self.num_key_value_heads * self.head_dim) = (b, q_len, self.num_key_value_heads * self.head_dim)
             assert all((
@@ -182,15 +194,19 @@ class LlamaLoraDiffAttention(LlamaAttention):
         attn_weights_1 = nn.functional.dropout(attn_weights_1, p=self.attention_dropout, training=self.training)
         attn_weights_2 = nn.functional.dropout(attn_weights_2, p=self.attention_dropout, training=self.training)
 
-        # lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(query_states)
-        # lambda_2 = torch.exp(torch.sum(self.lambda_q2 * self.lambda_k2, dim=-1).float()).type_as(query_states)
-        # lambda_full = lambda_1 - lambda_2 + self.lambda_init
-        lambda_full = self.lambda_init
+        if self.learn_lambda:
+            lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(query_states)
+            lambda_2 = torch.exp(torch.sum(self.lambda_q2 * self.lambda_k2, dim=-1).float()).type_as(query_states)
+            lambda_full = lambda_1 - lambda_2 + self.lambda_init
+        else:
+            lambda_full = self.lambda_init
 
         attn_weights = attn_weights_1 - lambda_full * attn_weights_2 # diff attn
         attn_output = torch.matmul(attn_weights, value_states) # (b, num_heads, q_len, q_len) @ (b, num_heads, q_len, head_dim) -> (b, num_heads, q_len, head_dim)
         assert attn_output.size() == torch.Size([bsz, self.num_heads, q_len, self.head_dim]), f"attn_output.size() = {attn_output.size()}"
-
+        # GroupNorm is layer normalization but applied to each head independently
+        if self.subln is not None:
+            attn_output = self.subln(attn_output)
         attn_output = attn_output * (1 - self.lambda_init)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -199,9 +215,9 @@ class LlamaLoraDiffAttention(LlamaAttention):
                 f" {attn_output.size()}"
             )
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.transpose(1, 2).contiguous() # (b, num_heads, q_len, head_dim) -> (b, q_len, num_heads, head_dim)
 
-        attn_output = attn_output.reshape(bsz, q_len, -1)
+        attn_output = attn_output.reshape(bsz, q_len, -1) # (b, q_len, num_heads, head_dim) -> (b, q_len, num_heads * head_dim) = (b, q_len, hidden_dim)
 
         if self.config.pretraining_tp > 1:
             raise NotImplementedError("Pretraining tensor parallel not implemented for LlamaDiffAttention")
@@ -209,7 +225,7 @@ class LlamaLoraDiffAttention(LlamaAttention):
             o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
             attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
         else:
-            attn_output = self.o_proj(attn_output)
+            attn_output = self.o_proj(attn_output) # (b, q_len, hidden_dim) @ (hidden_dim, hidden_dim) = (b, q_len, hidden_dim)
 
         if not output_attentions:
             attn_weights = None
@@ -254,16 +270,23 @@ class LlamaLoraDiffAttention(LlamaAttention):
         self.v_proj.weight.data = base_model_layer_attn.v_proj.weight.data.clone()
         self.o_proj.weight.data = base_model_layer_attn.o_proj.weight.data.clone()
 
-    def freeze_parameters(self, config: LlamaLoraDiffTransformerConfig):
+    def freeze_parameters(self, config: LlamaLoraDiffTransformerConfig = None):
         """
         Default: Freeze all parameters except for the LoRA parameters
-        TODO: add cases
+        TODO: add cases from config
         """
         for name, param in self.named_parameters():
-            if 'lambda' in name or 'lora' in name:
+            if 'lambda' in name or 'lora' in name or 'subln' in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
+
+    def extra_repr(self):
+        # overloads the nn.Module method to include lambdas when printing model (not printed by default because are not named submodules, just parameters)
+        lambdas_repr = ""
+        if self.learn_lambda:
+            lambdas_repr = f"(lambda_q1): Parameter({self.lambda_q1.shape})\n(lambda_k1): Parameter({self.lambda_k1.shape})\n(lambda_q2): Parameter({self.lambda_q2.shape})\n(lambda_k2): Parameter({self.lambda_k2.shape})"
+        return  lambdas_repr
 
 
 class LlamaLoraDiffTransformerModel(LlamaModel):
@@ -275,7 +298,7 @@ class LlamaLoraDiffTransformerModel(LlamaModel):
             if isinstance(layer.self_attn, LlamaAttention) and layer_idx in config.layers_to_transform:
                 layer.self_attn = LlamaLoraDiffAttention(config, layer_idx)
 
-class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
+class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
     # edit __init__ to change self.model to LlamaLoraDiffTransformerModel + freeze params + load base model weights
     def __init__(self, config: LlamaLoraDiffTransformerConfig, base_model: LlamaForCausalLM = None):
         LlamaPreTrainedModel.__init__(self, config)
@@ -288,9 +311,14 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
                 layer.self_attn.init_diff_attn_lora()
 
         # freeze all params (except attention)
-        for name, param in self.named_parameters():
-            if 'lora' not in name:
-                param.requires_grad = False
+        for _, param in self.named_parameters():
+            param.requires_grad = False
+        for i,layer in enumerate(self.model.layers):
+            if i in config.layers_to_transform:
+                layer.self_attn.freeze_parameters(config) # this activates the LoRA parameters
+            else:
+                for _, param in layer.named_parameters():
+                    param.requires_grad = False
 
         # load the state dict of the base model everywhere (except the custom parameters of the attention layers)
         if base_model:
@@ -361,12 +389,12 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
         assert len(unexpected_keys) == 0, "Unexpected keys found in the model state dict. Please check the model architecture."
         if self.config.verbose:
             print("Loaded base weights.")
-            missing_keys_without_lora_params = [key for key in missing_keys if 'lora' not in key]
+            missing_keys_without_lora_params = [key for key in missing_keys if 'lora' not in key and 'subln' not in key and 'lambda' not in key]
             print("Num missing keys =", len(missing_keys))
-            print("Missing keys (excluding LoRA): ", missing_keys_without_lora_params) # we expect no missing keys apart from the diff attn lora layers
+            print("Missing keys (excluding LoRA, subln, lambda): ", missing_keys_without_lora_params) # we expect no missing keys apart from the diff attn lora layers
             print("Unexpected keys: ", unexpected_keys)
             for key in missing_keys:
-                assert "lora" in key, f"Missing key {key}"
+                assert "lora" in key or "subln" in key or "lambda" in key, f"Missing key {key}"
 
     def load_diff_attn_weights(self, adapters_state_dict):
         missing_keys, unexpected_keys = self.load_state_dict(adapters_state_dict, strict=False)
@@ -374,12 +402,16 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM):
         if self.config.verbose:
             print("Loaded diff attn weights.")
             print("Num missing keys when loading adapters =", len(missing_keys))
-            print("Num keys that are not LoRA = ", len([key for key in self.state_dict().keys() if 'lora' not in key]))
+            print("Num keys that are not LoRA, subln, lambda = ", len([key for key in self.state_dict().keys() if 'lora' not in key and 'subln' not in key and 'lambda' not in key]))
 
             
     def load_base_weights_and_adapters(self, concat_state_dict):
         missing_keys, unexpected_keys = self.load_state_dict(concat_state_dict, strict=True)
         assert len(missing_keys) == 0 and len(unexpected_keys) == 0, f"Missing keys = {len(missing_keys)} || Unexpected keys = {len(unexpected_keys)}"
 
+    def unfreeze_adapters(self):
+        for name, param in self.named_parameters():
+            if 'lora' in name or 'subln' in name or 'lambda' in name:
+                param.requires_grad = True
 
 LlamaLoraDiffTransformerForCausalLM.register_for_auto_class("AutoModelForCausalLM")

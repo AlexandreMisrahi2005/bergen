@@ -9,6 +9,148 @@ from torch.distributions import Categorical
 from difflib import SequenceMatcher
 from collections import defaultdict
 
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
+
+from plotly.subplots import make_subplots
+import pandas as pd
+import numpy as np
+
+def plot_attention_map_with_bars(attentions, input_ids, prompt_len, tokenizer, save_path="figs/attention_map.html"):
+    """
+    Plots an attention map and a bar chart for average attention weights using Plotly.
+
+    Parameters:
+    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
+    - input_ids (list[int]): List of token IDs for the input sequence.
+    - prompt_len (int): Length of the prompt tokens.
+    - tokenizer: The tokenizer to decode token IDs into strings.
+    - save_path (str): Path to save the generated plot (default: "attention_map_with_bars.html").
+    """
+    # Slice the attention matrix: attentions from generated tokens to prompt tokens
+    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+
+    # Decode token IDs into strings
+    tokens = tokenizer.convert_ids_to_tokens(input_ids)
+    prompt_tokens = tokens[:prompt_len]
+    generated_tokens = tokens[prompt_len:]
+    print("prompt tokens: ", prompt_tokens)
+    print("generated tokens: ", generated_tokens)
+
+    # Convert data into a DataFrame for Plotly
+    df = pd.DataFrame(
+        sliced_attentions,
+        index=[t for t in generated_tokens],  # Add "Gen" prefix for clarity
+        columns=[t for t in prompt_tokens]  # Add "Prompt" prefix for clarity
+    )
+    print(f"Sliced attentions shape: {sliced_attentions.shape}")
+    print(f"Prompt tokens: {len(prompt_tokens)}")
+    print(f"Generated tokens: {len(generated_tokens)}")
+    print(df.head())
+
+    # Compute average attention over generated tokens
+    avg_attention = df.mean(axis=0)  # Average along generated tokens axis
+
+    # Create a subplot layout
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=(
+            "Attention Map: Generated Tokens → Prompt Tokens",
+            "Attn map, Averaged over the generated tokens"
+        ),
+        vertical_spacing=0.3
+    )
+
+    # Add the heatmap (attention map)
+    fig.add_trace(
+        go.Heatmap(
+            z=df.values,
+            x=df.columns,
+            y=df.index,
+            colorscale="Viridis",
+            colorbar=dict(title="Attention Weight")
+        ),
+        row=1, col=1
+    )
+
+    # Add the bar chart (average attention weights)
+    fig.add_trace(
+        go.Bar(
+            x=df.columns,
+            y=avg_attention.values,
+            marker=dict(color="blue")
+        ),
+        row=2, col=1
+    )
+
+    # Update layout for the figure
+    fig.update_layout(
+        height=800,  # Adjust the height of the figure
+        title="Attention Map and Average Attention Weights",
+        xaxis=dict(title="Prompt Tokens", tickangle=45),
+        xaxis2=dict(title="Prompt Tokens", tickangle=45),  # Separate x-axis for the bar chart
+        yaxis=dict(title="Generated Tokens"),
+        yaxis2=dict(title="Average Attention Weight"),
+        font=dict(size=10)
+    )
+
+    # Save the figure as an HTML file
+    fig.write_html(save_path)
+    print(f"Attention map and bar chart saved to {save_path}")
+
+    return fig
+
+
+
+def plot_attention_map(attentions, input_ids, prompt_len, tokenizer, save_path="figs/attention_map.html"):
+    """
+    Plots an attention map highlighting attention from generated tokens to prompt tokens.
+    
+    Parameters:
+    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
+    - input_ids (list[int]): List of token IDs for the input sequence.
+    - prompt_len (int): Length of the prompt tokens.
+    - tokenizer: The tokenizer to decode token IDs into strings.
+    """
+    # Slice the attention matrix: attentions from generated tokens to prompt tokens
+    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+
+    # Decode token IDs into strings
+    tokens = tokenizer.convert_ids_to_tokens(input_ids)
+    prompt_tokens = tokens[:prompt_len]
+    generated_tokens = tokens[prompt_len:]
+    print("generated tokens: ", generated_tokens)
+
+    # Convert data into a DataFrame for Plotly
+    df = pd.DataFrame(
+        sliced_attentions,
+        index=[t for t in generated_tokens],  # Add "Gen" prefix for clarity
+        columns=[t for t in prompt_tokens]  # Add "Prompt" prefix for clarity
+    )
+
+    # Create a Plotly heatmap
+    fig = px.imshow(
+        df,
+        labels=dict(x="Prompt Tokens", y="Generated Tokens", color="Attention Weight"),
+        title="Attention Map: Generated Tokens → Prompt Tokens",
+        color_continuous_scale="Viridis"
+    )
+
+    # Update layout for better visualization
+    fig.update_layout(
+        xaxis=dict(tickangle=45),  # Rotate x-axis labels
+        font=dict(size=10),       # Adjust font size
+        title=dict(font_size=16)  # Title font size
+    )
+
+    # Save the figure as an HTML file
+    fig.write_html(save_path)
+    print(f"Attention map saved to {save_path}")
+
+    return fig
+
 class LLM_att():
     def __init__(self, generator_config, prompt):
         generator_config['init_args']['attn_implementation'] = 'sdpa'
@@ -17,6 +159,15 @@ class LLM_att():
         #self.llm = Generate(**generator_config, prompt=prompt, flash_att=False) if generator_config != None else None   
 
     def collate_fn(self, sample):
+        # detect if the sample is a needle in haystack test instance, match the phrase "(The magic number is xx)"
+        nih = False
+        nih_res = re.search(r" \(The magic number is (\d+)\)", sample['instruction'])
+        if nih_res:
+            # extract whole phrase from text and tokenize it
+            magic_phrase = nih_res.group(0)
+            # tokenize it to know exactly the corresponding sequence of tokens
+            magic_tokenized = self.llm.tokenizer([magic_phrase], is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
+            nih = True
         #decompotes prompt into different subparts, and keep trace of subparts position (to quantify attention at these subparts)
         instr_subset = {}
         for prompt_el in ['system', 'context', 'system_without_docs', "user", 'user_without_docs', 'language_instruction']:
@@ -42,6 +193,7 @@ class LLM_att():
         start_pos = 0
         i = 0
         curr_label = 'bos'
+        # print("instr_subset", instr_subset)
         for pos in sorted(instr_subset):
             if pos[0]>=start_pos:
                 substrings.append(sample['instruction'][start_pos:pos[0]])
@@ -59,12 +211,35 @@ class LLM_att():
         substrings_types.append(curr_label)
         
         tokenized = self.llm.tokenizer(substrings+[sample['candidate']], is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
+        # print("tokens: ", [self.llm.tokenizer.decode(i) for i in tokenized['input_ids'][0]])
 
         #tokenized_tensor = self.llm.tokenizer(substrings+[sample['candidate']], add_special_tokens=False, )
         prompt_tokenized = self.llm.tokenizer(substrings, is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
         #breakpoint()
         prompt_len = prompt_tokenized.input_ids.size(1)
-        return tokenized, prompt_len, substrings_types
+        if nih:
+            # find start end positions of magic_tokenized in the prompt
+            magic_start = -1
+            magic_end = -1
+            for i in range(prompt_len):
+                if torch.all(magic_tokenized['input_ids'] == prompt_tokenized['input_ids'][:, i:i+magic_tokenized.input_ids.size(1)]):
+                    magic_start = i
+                    magic_end = i+magic_tokenized.input_ids.size(1)
+                    print("found magic tokenized start/end", magic_start, magic_end)
+                    break
+            # find start position of query
+            # tokenize sample['question']
+            question_start = -1
+            question_end = -1
+            question_tokenized = self.llm.tokenizer([sample['question']], is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
+            for i in range(prompt_len):
+                if torch.all(question_tokenized['input_ids'] == prompt_tokenized['input_ids'][:, i:i+question_tokenized.input_ids.size(1)]):
+                    question_start = i
+                    question_end = i+question_tokenized.input_ids.size(1)
+                    print("found question tokenized start/end", question_start, question_end)
+                    break
+        out_nih = (magic_start, magic_end, question_start, question_end) if nih and question_start > 0 and magic_start > 0 else None
+        return tokenized, prompt_len, substrings_types, out_nih
     
     @torch.no_grad()
     def __call__(self, predictions, references, questions, instructions):
@@ -185,7 +360,11 @@ class LLM_att():
         for j in tqdm(range(0, min(len(examples), samples)), desc=' Compute attention-based metrics'):
         #for i in tqdm(range(0, len(examples)), desc=' Compute attention-based metrics'):
             # Extract batch
-            batch_inputs, prompt_len, input_types  = self.collate_fn(examples[j])
+            batch_inputs, prompt_len, input_types, nih_output  = self.collate_fn(examples[j])
+            # print(examples[j])
+            # print("batch_inputs", batch_inputs)
+            # print("prompt_len", prompt_len)
+            # print("input_types", input_types)
             #breakpoint()
             batch_input_ids = batch_inputs['input_ids'].to('cuda')
             batch_attention_masks = batch_inputs['attention_mask'].to('cuda')
@@ -197,6 +376,57 @@ class LLM_att():
             #decoded = self.llm.model.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
             att_by_cat = defaultdict(float)
             layers = list(range(1, self.llm.model.model.config.num_hidden_layers, 3)) + [-1]
+
+            if nih_output is not None:
+                (start_nih, end_nih, query_start, query_end) = nih_output
+                attentions = output['attentions'][0][-1][0] # take attention from last layer
+                #avg across heads
+                attentions = torch.mean(attentions, axis=0).squeeze(axis=0)# for att in full_attentions[0]
+                hidden_states = output['hidden_states'][0][layer-1][0]
+                if layer == -1:
+                    layer = "last"
+                hidden_states_norm = torch.norm(hidden_states, dim=1)
+                prompt_hidden_states = hidden_states_norm[:prompt_len]
+                #gen_hidden_states = hidden_states_norm[prompt_len:]
+                #prompt_to_gen_att_mh = full_attentions[:, prompt_len:, :prompt_len]
+                # check the attentions matrix is symmetric
+                # print("attentions is symmetric? ", torch.allclose(attentions, attentions.T, atol=1e-8))
+                # print("attentions is upper triangular? ", torch.allclose(attentions, torch.triu(attentions), atol=1e-8))
+                # print("attentions is lower triangular? ", torch.allclose(attentions, torch.tril(attentions), atol=1e-8))
+                # prompt_to_gen_att = attentions[prompt_len:, :prompt_len]
+                # print("prompt_to_gen_att.sum(axis=1)", prompt_to_gen_att.sum(axis=1))
+                # print("prompt_to_gen_att.shape", prompt_to_gen_att.shape)
+                # compute attention from start_nih to end_nih tokens
+                # print("start_nih", start_nih)
+                # print("end_nih", end_nih)
+                # print("query_start", query_start)
+                # print("query_end", query_end)
+                # print("prompt_len", prompt_len)
+                # compute attention to bos token
+                # prompt_to_gen_att_bos = attentions[prompt_len:, :1]
+                # # compute attention to instruction
+                # prompt_to_gen_instr = torch.cat([attentions[prompt_len:, 1:start_nih], attentions[prompt_len:, end_nih:query_start]], dim=1)
+                # # compute attention on magic phrase
+                # prompt_to_gen_magic = attentions[prompt_len:, start_nih:end_nih]
+                # # compute attention to query
+                # prompt_to_gen_query = attentions[prompt_len:, query_start:query_end]
+                # print shapes 
+                # print("prompt_to_gen_att_bos.shape", prompt_to_gen_att_bos.shape)
+                # print("prompt_to_gen_instr.shape", prompt_to_gen_instr.shape)
+                # print("prompt_to_gen_query.shape", prompt_to_gen_query.shape)
+                # print("attention on bos =", torch.mean(torch.sum(prompt_to_gen_att_bos, axis=1)).float().to('cpu').numpy())
+                # print("attention on instruction =", torch.mean(torch.sum(prompt_to_gen_instr, axis=1)).float().to('cpu').numpy())
+                # print("attention on magic phrase =", torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy())
+                # print("attention on query =", torch.mean(torch.sum(prompt_to_gen_query, axis=1)).float().to('cpu').numpy())
+                # check that the sum of attentions is 1
+                # print("sum of attention on bos =", torch.sum(prompt_to_gen_att_bos).float().to('cpu').numpy())
+                # print("sum of attention for each token generated after prompt on the prompt", torch.sum(prompt_to_gen_att, axis=1).float().to('cpu').numpy())
+                # print("sum of attention for each token generated after prompt", torch.sum(attentions[prompt_len:], axis=1).float().to('cpu').numpy())
+                assert batch_input_ids.shape[0] == 1
+                plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
+            elif not nih_output:
+                print("NIH output is None")
+
             for layer in layers:
                 attentions = output['attentions'][0][layer][0]                                        
                 #avg across heads
@@ -208,7 +438,8 @@ class LLM_att():
                 prompt_hidden_states = hidden_states_norm[:prompt_len]
                 #gen_hidden_states = hidden_states_norm[prompt_len:]
                 #prompt_to_gen_att_mh = full_attentions[:, prompt_len:, :prompt_len]
-                prompt_to_gen_att = attentions[prompt_len:, :prompt_len] 
+                prompt_to_gen_att = attentions[prompt_len:, :prompt_len]
+
                 #att_by_cat['att_prefix'] = torch.mean(torch.sum(prompt_to_gen_att, axis=1)).float().to('cpu').numpy()
                 for i, cat in enumerate(input_types):
                     if not i+1 in batch_inputs.word_ids():
@@ -254,5 +485,8 @@ class LLM_att():
             scores.append(att_by_cat)    
             
         torch.cuda.empty_cache()
-        return {cat: np.mean([score[cat] for score in scores]) for cat in att_by_cat.keys()}, scores
+        d = {cat: np.mean([score[cat] for score in scores]) for cat in att_by_cat.keys()}
+        # print("d", d)
+        # print("scores", scores)
+        return d, scores
 
