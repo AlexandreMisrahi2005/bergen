@@ -27,3 +27,5 @@ fasttext
 fasttext-langdetect
 langdetect
 langcodes
+langchain_community
+ollama

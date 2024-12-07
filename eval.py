@@ -12,9 +12,9 @@ pd.set_option("display.precision", 4)
 
 class Evaluate:
     @staticmethod
-    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, ragchecker: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
+    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_att: bool=False, llm_ll: bool=False, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
         def eval_single(experiment_folder, folder, split: str, model, metric_name: str, nb_samples: int =-1):
-            if folder != None:
+            if folder is not None:
                 folders = [folder]
             else:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
@@ -38,6 +38,7 @@ class Evaluate:
                     except: continue
 
                     if metric_name in metrics_dict and not force:
+                        #TODO: will not work for att metrics, how can we check if att has already been computed?
                         print (f"{experiment_folder}\t{metric_name}\talready done")
                         continue
                     folders_processed += 1
@@ -50,13 +51,35 @@ class Evaluate:
                         # openai costs
                         model_score, scores, cost = model(predictions, references, questions)
                         costs_out_file = f'{experiment_folder}/eval_{split}_cost_{metric_name}_out.json'
-                        with open(costs_out_file, 'w') as fout: fout.write(json.dumps(cost))
-                    else:                    
-                        model_score, scores = model(predictions, references, questions)
-                    data[metric_name] = scores
+                        with open(costs_out_file, 'w') as fout:
+                            fout.write(json.dumps(cost))
+                    else:
+                        if metric_name == "att":
+                            model_score, scores = model(predictions, references, questions, data['instruction'].values)
+                        else:
+                            model_score, scores = model(predictions, references, questions)
+                    if metric_name =="att":
+                        # metrics_score is a dict of different att metrics in this case
+                        if nb_samples > 0:
+                            metrics_dict.update(model_score)      
+                        else:
+                            metrics_dict.update({f'{k}_{nb_samples}':model_score[k] for k in model_score})      
+
+                        for k in range(len(scores)):
+                            data[k] = scores[k]
+                        pass
+                    else:
+                        data[metric_name] = scores                        
+                        if nb_samples >0:
+                            metric_name = f"{metric_name}_{nb_samples}"           
+                        metrics_dict.update({metric_name: model_score})
+                        
+                    
                     metrics_out_file = f'{experiment_folder}/eval_{split}_out.json'
                     if nb_samples >0:
                         metrics_out_file = f'{experiment_folder}/eval_{split}_out_{nb_samples}.json'
+
+                    print(metric_name,model_score)
                         
                     # temporary print eval_out results with updated metric  (to avoid loosing eval_dev_out.json if smth goes wrong)                   
                     data.to_json(metrics_out_file+"_", orient='records') 
@@ -121,16 +144,76 @@ class Evaluate:
                 model_config = llm_ollama[0]
                 short_name = llm_ollama[1] 
                 short_name = f"LLMeval_{short_name}"
-            if llm_batch_size == None:
+            if llm_batch_size is None:
                 llm_batch_size = 1        
             model = OllamaEval(model_config, batch_size=llm_batch_size, config=llm_prompt, basic_url=ollama_url)
-            while eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples) > 0:
+            while eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples) > 0: # repeat until all folders are processed (so it can run in parallel with multiple inferences)
                 pass
-            
+        
+        if llm_att is not None:
+            from models.evaluators.llm_att import LLM_att
+            if folder is None:
+                folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+            else:
+                folders = [folder]
+            model_name = ''
+            for folder in folders:
+                #get model name from  config
+                config = yaml.safe_load(open(f"{folder}/config.yaml"))
+                generator = config['generator']
+                prompt = config['prompt']
+                if not config['generator']['init_args']['model_name'] == model_name :
+                    try:
+                        generator['init_args']['_target_'] = generator['init_args']['_target_'].replace('vllm', 'llm')
+                        generator['init_args']['model_name'] = generator['init_args']['model_name'].replace('tmp_', '')
+                        
+                        model = LLM_att(generator, prompt)   
+
+                        model_name = config['generator']['init_args']['model_name']
+
+                    except Exception as e:
+                        print("Skip", folder, model_name )
+                        print(e)
+                        continue
+                else:
+                    #if other folder used the same generator, do not load it again, but update prompt
+                    model.llm.model.prompt = prompt
+                short_name = "att"
+                eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples)
+        
+        if llm_ll is not None :
+            from models.evaluators.llm_ll import LLM_LL
+            if folder is None:
+                folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+            else:
+                folders = [folder]
+            model_name = ''
+            for folder in folders:
+                #get model name from  config
+                config = yaml.safe_load(open(f"{folder}/config.yaml"))
+                generator = config['generator']
+                prompt = config['prompt']
+                if not config['generator']['init_args']['model_name'] == model_name :
+                    try:
+                        generator['init_args']['_target_'] = generator['init_args']['_target_'].replace('vllm', 'llm')
+                        
+                        model = LLM_LL(generator, prompt)   
+
+                        model_name = config['generator']['init_args']['model_name']
+
+                    except:
+                        print("Skip", folder, model_name )
+                        continue
+                else:
+                    #if other folder used the same generator, do not load it again, but update prompt
+                    model.llm.model.prompt = prompt
+                short_name = "LL"
+                eval_single(experiment_folder, folder, split, model, short_name)
+        
         if lid is not None or lid_advanced is not None:
             from models.evaluators.lid import LID
             from models.evaluators.lid_advanced import LID_advanced
-            if folder == None:
+            if folder is None:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
             else:
                 folders = [folder]
@@ -152,22 +235,22 @@ class Evaluate:
                     model = LID_advanced(tgt_lng)
                     eval_single(experiment_folder, folder, split, model, "lid_advanced", nb_samples = samples)
 
-        if ragchecker:
-            from models.evaluators.ragchecker import RAGChecker
-            if folder is None:
-                folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
-            else:
-                folders = [folder]
-            print(folders)
-            for folder in folders:
-                print('evaluating', folder)
-                input_file = f'{folder}/eval_{split}_out.json'
-                if os.path.exists(input_file):
-                    model = RAGChecker(folder, split=split)  # the fact that we reload the claim extractor and claim entailement models for each folder is done on purpose to maximise batch size
-                    model.forward()
-                else:
-                    print(f"{folder} doesn't have eval_{split}_out.json")
-                    continue
+        # if ragchecker:
+        #     from models.evaluators.ragchecker import RAGChecker
+        #     if folder is None:
+        #         folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+        #     else:
+        #         folders = [folder]
+        #     print(folders)
+        #     for folder in folders:
+        #         print('evaluating', folder)
+        #         input_file = f'{folder}/eval_{split}_out.json'
+        #         if os.path.exists(input_file):
+        #             model = RAGChecker(folder, split=split)  # the fact that we reload the claim extractor and claim entailement models for each folder is done on purpose to maximise batch size
+        #             model.forward()
+        #         else:
+        #             print(f"{folder} doesn't have eval_{split}_out.json")
+        #             continue
 
 
 if __name__ == "__main__":
@@ -181,6 +264,9 @@ if __name__ == "__main__":
     parser.add_argument('--bem', action='store_true')
     parser.add_argument('--lid', action='store_true', default=None)
     parser.add_argument('--lid_advanced', action='store_true', default=None)
+    parser.add_argument('--llm_att', action='store_true', default=None, help="Compute attention-based metrics")
+    parser.add_argument('--llm_ll', action='store_true', default=None, help="Compute ll metrics")
+
 
     parser.add_argument('--llm', type=str, nargs='*', default=None, 
             help=""" 
@@ -212,6 +298,8 @@ if __name__ == "__main__":
         split=args.split, 
         bem=args.bem,
         llm=args.llm, 
+        llm_att = args.llm_att,        
+        llm_ll = args.llm_ll,
         llm_ollama=args.llm_ollama,
         gpt=args.gpt,
         ragchecker=args.ragchecker,

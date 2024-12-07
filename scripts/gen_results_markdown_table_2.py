@@ -3,24 +3,19 @@ import json
 
 ### Choose dataset directories to report
 
-# dataset_dirs = [
-#     "experiments/tune_diff_attn_lambda",
-# ]
+dataset_dirs = [
+    "experiments/tune_diff_attn_lambda",
+]
 
-# dataset_dirs = [
-#     # "experiments/tune_diff_attn_nq_lambda_spladeberta",
-#     "experiments/tune_diff_attn_nq_lambda_spladeberta_nogroupnorm",
-#     "experiments/tune_diff_attn_nqrfshort_lambda_spladeberta",
-# ]
+dataset_dirs = [
+    # "experiments/tune_diff_attn_nq_lambda_spladeberta",
+    "experiments/tune_diff_attn_nq_lambda_spladeberta_nogroupnorm",
+    "experiments/tune_diff_attn_nqrfshort_lambda_spladeberta",
+]
 
 # dataset_dirs = [
 #     "experiments/tune_diff_attn_learnlambda",
 #     "experiments/tune_diff_attn_learnlambda_nogroupnorm",
-# ]
-
-# dataset_dirs = [
-#     "experiments/control_nq_llama/train_Lora_NQ_llama38b_instruct_spladeberta_top3_basicprompt/eval",
-#     "experiments/control_nq_llama/train_Lora_NQrfshort_llama38b_instruct_spladeberta_top3_basicprompt/eval",
 # ]
 
 dataset_dirs = [
@@ -30,48 +25,51 @@ dataset_dirs = [
 
 LLMEVAL = False
 
-subdirs_of_interest = [sorted(next(os.walk(dataset_dirs[i]))[1]) if os.path.exists(dataset_dirs[i]) else None for i in range(len(dataset_dirs)) ]
+# for each dir in dataset_dirs, take one subdir, add 'eval' and then find all subdirs that contain 'eval_dev_metrics.json'
+subdirs_of_interest = []
+for root_dir in dataset_dirs:
+    if not os.path.isdir(root_dir):
+        print(f"Skipping {root_dir}, as it's not a valid directory.")
+        continue
+    
+    # Find the first subdirectory
+    subdirs = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
+    if not subdirs:
+        print(f"No subdirectories found in {root_dir}.")
+        continue
+    
+    # Find all sub-subdirectories containing 'eval_dev_metrics.json'
+    for subdir in subdirs:
+        for subsubdir in os.listdir(os.path.join(root_dir, subdir, 'eval')):
+            subsubdir_path = os.path.join(root_dir, subdir, 'eval', subsubdir)
+            if os.path.isdir(subsubdir_path) and not subsubdir_path.startswith('tmp_') and 'eval_dev_metrics.json' in os.listdir(subsubdir_path):
+                subdirs_of_interest.append(subsubdir_path)
+
+# subdirs_of_interest = [sorted(next(os.walk(dataset_dirs[i]))[1]) if os.path.exists(dataset_dirs[i]) else None for i in range(len(dataset_dirs)) ]
 
 output_file = 'metrics_table.md'
-text = ""
+text = "| Checkpoint | Match | Recall | LLMeval (Llama3.1-70b)\n" if LLMEVAL else "| Checkpoint | Match | Recall |\n" 
+text += "|------------|-----------|--------|-------|\n" if LLMEVAL else "|------------|-----------|--------|\n"
 def format_metric(value):
     try:
         return '%.3f' % float(value)
     except (ValueError, TypeError):
         return value 
 
-for i,root_dir in enumerate(dataset_dirs):
-    if not os.path.exists(root_dir):
-        print("Did not find dir", root_dir)
-        continue
-    text += root_dir + "\n"
-    # header
-    markdown_table = "| Checkpoint | Match | Recall | LLMeval (Llama3.1-70b)\n" if LLMEVAL else "| Checkpoint | Match | Recall |\n"
-    markdown_table += "|------------|-----------|--------|-------|\n" if LLMEVAL else "|------------|-----------|--------|\n"
-    for subdir in subdirs_of_interest[i]:
-        if subdir is None:
-            print("Skipping" + subdir)
-            continue
-        if subdir.startswith('tmp_') or 'tinyllama' in subdir:
-            continue
-        subdir_path = os.path.join(root_dir, subdir)
-        json_file_path = os.path.join(subdir_path, 'eval_dev_metrics.json')
-        # subdir_name = "lambda = " + subdir.split("lambda")[1].split("_")[0]
-        # if len(subdir.split("base_init_alllayers_")) > 1:
-        #     subdir_name += f", {subdir.split('base_init_alllayers_')[1]}"
-        subdir_name = subdir
-        if os.path.exists(json_file_path):
-            with open(json_file_path, 'r') as json_file:
-                metrics = json.load(json_file)
-                match = format_metric(metrics.get('M', 'TBD'))
-                recall = format_metric(metrics.get('Recall', 'TBD'))
-                if LLMEVAL:
-                    llmeval = format_metric(metrics.get('LLMeval_llama3.1:70b', 'TBD'))
-                markdown_table += f"| {subdir_name} | {match} | {recall} | {llmeval} |\n" if LLMEVAL else f"| {subdir_name} | {match} | {recall} |\n"
-        else:
-            print(f"File not found: {json_file_path}")
-            markdown_table += f"| {subdir_name} | TBD | TBD | TBD |\n" if LLMEVAL else f"| {subdir_name} | TBD | TBD |\n"
-    text += markdown_table + "\n\n"
+for dir_ in sorted(subdirs_of_interest):
+    json_file_path = os.path.join(dir_, 'eval_dev_metrics.json')
+    name = dir_
+    if os.path.exists(json_file_path):
+        with open(json_file_path, 'r') as json_file:
+            metrics = json.load(json_file)
+            match = format_metric(metrics.get('M', 'TBD'))
+            recall = format_metric(metrics.get('Recall', 'TBD'))
+            if LLMEVAL:
+                llmeval = format_metric(metrics.get('LLMeval_llama3.1:70b', 'TBD'))
+            text += f"| {name} | {match} | {recall} | {llmeval} |\n" if LLMEVAL else f"| {name} | {match} | {recall} |\n"
+    else:
+        print(f"File not found: {json_file_path}")
+        text += f"| {name} | TBD | TBD | TBD |\n" if LLMEVAL else f"| {name} | TBD | TBD |\n"
 
 with open(output_file, 'w') as file:
     file.write(text)

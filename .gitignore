@@ -27,9 +27,13 @@ generated_queries/
 
 *.DS_Store
 
+figs/
+tmp/
+runs/
+.vscode/
+.gitignore
+
 datasets
 experiments
 indexes
-
-tmp/
-runs/
+logs

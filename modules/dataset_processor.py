@@ -208,9 +208,13 @@ class MsMarcoQueries(Processor):
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
-        queries_d = json.load(open("/gfs-ssd/user/tformal/neural_search/MSMARCO/dev_queries_collection/dev_queries.json"))  # super hard-coded path, see how to do properly
-        ids, queries = zip(*queries_d.items())
-        dataset = datasets.Dataset.from_dict({"id":ids, "content": queries})  # no need for split?
+        # queries_d = json.load(open("/gfs-ssd/user/tformal/neural_search/MSMARCO/dev_queries_collection/dev_queries.json"))  # super hard-coded path, see how to do properly
+        # ids, queries = zip(*queries_d.items())
+        # dataset = datasets.Dataset.from_dict({"id":ids, "content": queries})  # no need for split?
+        # return dataset
+        dataset = datasets.load_dataset("irds/msmarco-passage_dev", 'queries', trust_remote_code=True)
+        dataset = dataset.rename_column("query_id", "id")
+        dataset = dataset.rename_column("text", "content")
         return dataset
 
 # ---------------------------------------- #
@@ -467,7 +471,7 @@ class MsMarcoCollection(Processor):
     def process(self):
         # load from the ir-dataset HF repo
         hf_name = "irds/msmarco-passage"
-        dataset = datasets.load_dataset(hf_name, 'docs', num_proc=self.num_proc)  # no need for split?
+        dataset = datasets.load_dataset(hf_name, 'docs', num_proc=self.num_proc, trust_remote_code=True)  # no need for split?
         dataset = dataset.rename_column("doc_id", "id")
         dataset = dataset.rename_column("text", "content")
         return dataset
