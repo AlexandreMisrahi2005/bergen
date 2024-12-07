@@ -1,4 +1,4 @@
-system: ""
+system: "You are a knowledgeable AI assistant. Answer the given questions to the best of your knowledge."
 user: f"Background:\n{docs}\n\nQuestion:\ {question}"
 system_without_docs: ""
 user_without_docs: f"Question:\ {question}"

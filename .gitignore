@@ -27,5 +27,9 @@ generated_queries/
 
 *.DS_Store
 
+datasets
+experiments
+indexes
+
 tmp/
 runs/

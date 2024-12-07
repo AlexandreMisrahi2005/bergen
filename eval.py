@@ -12,7 +12,7 @@ pd.set_option("display.precision", 4)
 
 class Evaluate:
     @staticmethod
-    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
+    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, ragchecker: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
         def eval_single(experiment_folder, folder, split: str, model, metric_name: str, nb_samples: int =-1):
             if folder != None:
                 folders = [folder]
@@ -151,7 +151,24 @@ class Evaluate:
                 if lid_advanced is not None:
                     model = LID_advanced(tgt_lng)
                     eval_single(experiment_folder, folder, split, model, "lid_advanced", nb_samples = samples)
-        
+
+        if ragchecker:
+            from models.evaluators.ragchecker import RAGChecker
+            if folder is None:
+                folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+            else:
+                folders = [folder]
+            print(folders)
+            for folder in folders:
+                print('evaluating', folder)
+                input_file = f'{folder}/eval_{split}_out.json'
+                if os.path.exists(input_file):
+                    model = RAGChecker(folder, split=split)  # the fact that we reload the claim extractor and claim entailement models for each folder is done on purpose to maximise batch size
+                    model.forward()
+                else:
+                    print(f"{folder} doesn't have eval_{split}_out.json")
+                    continue
+
 
 if __name__ == "__main__":
     import argparse
@@ -180,6 +197,7 @@ if __name__ == "__main__":
                 - if short name is missing: use full name in naming
                 """ )
     parser.add_argument('--gpt', type=str,default=None)
+    parser.add_argument('--ragchecker', action='store_true')
     parser.add_argument('--bem_batch_size', type=int, default=1024)
     parser.add_argument('--llm_batch_size', type=int, default=None)
     parser.add_argument('--force', action='store_true')
@@ -196,6 +214,7 @@ if __name__ == "__main__":
         llm=args.llm, 
         llm_ollama=args.llm_ollama,
         gpt=args.gpt,
+        ragchecker=args.ragchecker,
         lid=args.lid,
         lid_advanced=args.lid_advanced,
         bem_batch_size=args.bem_batch_size,

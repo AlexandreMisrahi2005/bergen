@@ -657,8 +657,6 @@ class RAG:
         )
         print("trainer evaluate")
         print(trainer.evaluate())
-        import sys
-        sys.exit()
         trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
         self.generator.model = trainer.model
         
