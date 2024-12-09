@@ -1,0 +1,8 @@
+init_args: 
+  _target_: models.generators.llm.LLM
+  model_name: "experiments/FT/qwen_tune_LR/LR1e-4/train/checkpoint-41124"
+  max_new_tokens: 128
+  max_length: 2048
+  quantization: "int4"
+  batch_size: 32
+  local_path: True

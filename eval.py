@@ -14,7 +14,7 @@ class Evaluate:
     @staticmethod
     def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_att: bool=False, llm_ll: bool=False, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
         def eval_single(experiment_folder, folder, split: str, model, metric_name: str, nb_samples: int =-1):
-            if folder != None:
+            if folder is not None:
                 folders = [folder]
             else:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
@@ -51,7 +51,8 @@ class Evaluate:
                         # openai costs
                         model_score, scores, cost = model(predictions, references, questions)
                         costs_out_file = f'{experiment_folder}/eval_{split}_cost_{metric_name}_out.json'
-                        with open(costs_out_file, 'w') as fout: fout.write(json.dumps(cost))
+                        with open(costs_out_file, 'w') as fout:
+                            fout.write(json.dumps(cost))
                     else:
                         if metric_name == "att":
                             model_score, scores = model(predictions, references, questions, data['instruction'].values)
@@ -143,15 +144,15 @@ class Evaluate:
                 model_config = llm_ollama[0]
                 short_name = llm_ollama[1] 
                 short_name = f"LLMeval_{short_name}"
-            if llm_batch_size == None:
+            if llm_batch_size is None:
                 llm_batch_size = 1        
             model = OllamaEval(model_config, batch_size=llm_batch_size, config=llm_prompt, basic_url=ollama_url)
             while eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples) > 0: # repeat until all folders are processed (so it can run in parallel with multiple inferences)
                 pass
         
-        if llm_att is not None :
+        if llm_att is not None:
             from models.evaluators.llm_att import LLM_att
-            if folder == None:
+            if folder is None:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
             else:
                 folders = [folder]
@@ -182,7 +183,7 @@ class Evaluate:
         
         if llm_ll is not None :
             from models.evaluators.llm_ll import LLM_LL
-            if folder == None:
+            if folder is None:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
             else:
                 folders = [folder]
@@ -212,7 +213,7 @@ class Evaluate:
         if lid is not None or lid_advanced is not None:
             from models.evaluators.lid import LID
             from models.evaluators.lid_advanced import LID_advanced
-            if folder == None:
+            if folder is None:
                 folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
             else:
                 folders = [folder]
@@ -233,7 +234,24 @@ class Evaluate:
                 if lid_advanced is not None:
                     model = LID_advanced(tgt_lng)
                     eval_single(experiment_folder, folder, split, model, "lid_advanced", nb_samples = samples)
-        
+
+        # if ragchecker:
+        #     from models.evaluators.ragchecker import RAGChecker
+        #     if folder is None:
+        #         folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+        #     else:
+        #         folders = [folder]
+        #     print(folders)
+        #     for folder in folders:
+        #         print('evaluating', folder)
+        #         input_file = f'{folder}/eval_{split}_out.json'
+        #         if os.path.exists(input_file):
+        #             model = RAGChecker(folder, split=split)  # the fact that we reload the claim extractor and claim entailement models for each folder is done on purpose to maximise batch size
+        #             model.forward()
+        #         else:
+        #             print(f"{folder} doesn't have eval_{split}_out.json")
+        #             continue
+
 
 if __name__ == "__main__":
     import argparse
@@ -265,6 +283,7 @@ if __name__ == "__main__":
                 - if short name is missing: use full name in naming
                 """ )
     parser.add_argument('--gpt', type=str,default=None)
+    parser.add_argument('--ragchecker', action='store_true')
     parser.add_argument('--bem_batch_size', type=int, default=1024)
     parser.add_argument('--llm_batch_size', type=int, default=None)
     parser.add_argument('--force', action='store_true')
@@ -283,6 +302,7 @@ if __name__ == "__main__":
         llm_ll = args.llm_ll,
         llm_ollama=args.llm_ollama,
         gpt=args.gpt,
+        ragchecker=args.ragchecker,
         lid=args.lid,
         lid_advanced=args.lid_advanced,
         bem_batch_size=args.bem_batch_size,
