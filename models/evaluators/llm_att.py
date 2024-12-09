@@ -393,7 +393,7 @@ class LLM_att():
                 # print("attentions is symmetric? ", torch.allclose(attentions, attentions.T, atol=1e-8))
                 # print("attentions is upper triangular? ", torch.allclose(attentions, torch.triu(attentions), atol=1e-8))
                 # print("attentions is lower triangular? ", torch.allclose(attentions, torch.tril(attentions), atol=1e-8))
-                # prompt_to_gen_att = attentions[prompt_len:, :prompt_len]
+                prompt_to_gen_att = attentions[prompt_len:, :prompt_len]
                 # print("prompt_to_gen_att.sum(axis=1)", prompt_to_gen_att.sum(axis=1))
                 # print("prompt_to_gen_att.shape", prompt_to_gen_att.shape)
                 # compute attention from start_nih to end_nih tokens
@@ -407,7 +407,8 @@ class LLM_att():
                 # # compute attention to instruction
                 # prompt_to_gen_instr = torch.cat([attentions[prompt_len:, 1:start_nih], attentions[prompt_len:, end_nih:query_start]], dim=1)
                 # # compute attention on magic phrase
-                # prompt_to_gen_magic = attentions[prompt_len:, start_nih:end_nih]
+                prompt_to_gen_magic = attentions[prompt_len:, start_nih:end_nih]
+                att_by_cat["att_last_magic"] = torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy()
                 # # compute attention to query
                 # prompt_to_gen_query = attentions[prompt_len:, query_start:query_end]
                 # print shapes 
