@@ -221,22 +221,22 @@ class LLM_att():
             # find start end positions of magic_tokenized in the prompt
             magic_start = -1
             magic_end = -1
-            for i in range(prompt_len):
+            for i in range(prompt_len - magic_tokenized.input_ids.size(1)):
                 if torch.all(magic_tokenized['input_ids'] == prompt_tokenized['input_ids'][:, i:i+magic_tokenized.input_ids.size(1)]):
                     magic_start = i
                     magic_end = i+magic_tokenized.input_ids.size(1)
-                    print("found magic tokenized start/end", magic_start, magic_end)
+                    # print("found magic tokenized start/end", magic_start, magic_end)
                     break
             # find start position of query
             # tokenize sample['question']
             question_start = -1
             question_end = -1
             question_tokenized = self.llm.tokenizer([sample['question']], is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
-            for i in range(prompt_len):
+            for i in range(prompt_len - question_tokenized.input_ids.size(1)):
                 if torch.all(question_tokenized['input_ids'] == prompt_tokenized['input_ids'][:, i:i+question_tokenized.input_ids.size(1)]):
                     question_start = i
                     question_end = i+question_tokenized.input_ids.size(1)
-                    print("found question tokenized start/end", question_start, question_end)
+                    # print("found question tokenized start/end", question_start, question_end)
                     break
         out_nih = (magic_start, magic_end, question_start, question_end) if nih and question_start > 0 and magic_start > 0 else None
         return tokenized, prompt_len, substrings_types, out_nih
@@ -382,11 +382,11 @@ class LLM_att():
                 attentions = output['attentions'][0][-1][0] # take attention from last layer
                 #avg across heads
                 attentions = torch.mean(attentions, axis=0).squeeze(axis=0)# for att in full_attentions[0]
-                hidden_states = output['hidden_states'][0][layer-1][0]
+                # hidden_states = output['hidden_states'][0][layer-1][0]
                 if layer == -1:
                     layer = "last"
-                hidden_states_norm = torch.norm(hidden_states, dim=1)
-                prompt_hidden_states = hidden_states_norm[:prompt_len]
+                # hidden_states_norm = torch.norm(hidden_states, dim=1)
+                # prompt_hidden_states = hidden_states_norm[:prompt_len]
                 #gen_hidden_states = hidden_states_norm[prompt_len:]
                 #prompt_to_gen_att_mh = full_attentions[:, prompt_len:, :prompt_len]
                 # check the attentions matrix is symmetric
@@ -408,7 +408,7 @@ class LLM_att():
                 # prompt_to_gen_instr = torch.cat([attentions[prompt_len:, 1:start_nih], attentions[prompt_len:, end_nih:query_start]], dim=1)
                 # # compute attention on magic phrase
                 prompt_to_gen_magic = attentions[prompt_len:, start_nih:end_nih]
-                att_by_cat["att_last_magic"] = torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy()
+                att_by_cat["att_last_magic"] = torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy().item()
                 # # compute attention to query
                 # prompt_to_gen_query = attentions[prompt_len:, query_start:query_end]
                 # print shapes 
@@ -424,7 +424,8 @@ class LLM_att():
                 # print("sum of attention for each token generated after prompt on the prompt", torch.sum(prompt_to_gen_att, axis=1).float().to('cpu').numpy())
                 # print("sum of attention for each token generated after prompt", torch.sum(attentions[prompt_len:], axis=1).float().to('cpu').numpy())
                 assert batch_input_ids.shape[0] == 1
-                plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
+                if j == 0:
+                    plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
             elif not nih_output:
                 print("NIH output is None")
 

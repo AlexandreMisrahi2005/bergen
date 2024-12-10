@@ -302,7 +302,7 @@ if __name__ == "__main__":
         llm_ll = args.llm_ll,
         llm_ollama=args.llm_ollama,
         gpt=args.gpt,
-        ragchecker=args.ragchecker,
+        # ragchecker=args.ragchecker,
         lid=args.lid,
         lid_advanced=args.lid_advanced,
         bem_batch_size=args.bem_batch_size,
