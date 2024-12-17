@@ -601,7 +601,10 @@ class MultiQA(Processor):
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
-        ds = datasets.load_dataset("dmrau/multi_qa", num_proc=self.num_proc)[self.split]
+        ds = datasets.load_dataset("dmrau/multi_qa", num_proc=self.num_proc)["train"]
+        if self.split == 'dev':
+            # take 1000 rows at random, reproducibly
+            ds = ds.shuffle(seed=42).select(range(1000))
         return ds
 
 class MultiQA_Reformulated(Processor):

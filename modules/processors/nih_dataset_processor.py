@@ -17,7 +17,12 @@ class NIHDataset(Processor):
     
     def process(self):
         print(self.conf_name)
-        d = datasets.load_dataset('naver/bergen_nih_v1',self.conf_name)[self.split]
+        if self.conf_name in ['number', 'simple', 'multihop']:
+            d = datasets.load_dataset('naver/bergen_nih_v1',self.conf_name)[self.split]
+        elif self.conf_name == 'hash':
+            d = datasets.load_from_disk('nih_hash')[self.split]
+        else:
+            raise ValueError('Invalid config_name: '+self.conf_name, ' || Valid values are: number, simple, multihop, hash')
         #oracle run data generations
         qids_dids_l =[ (x['qid'],x['did']) for x in d]
         #FIXME get the run dirs?
@@ -56,4 +61,6 @@ class NIHDatasetMultiHop(NIHDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs,config_name='multihop')
 
-    
+class NIHDatasetHash(NIHDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs,config_name='hash')

@@ -128,6 +128,8 @@ class RAG:
             shuffle_labels=True if generator_config is not None and generator_config.init_args.model_name == 'random_answer' else False,
             oracle_provenance=True if retriever_config is not None and retriever_config.init_args.model_name == 'oracle_provenance' else False,
             )
+        if dataset_config['dev']['query']['init_args']['_target_'] == 'modules.processors.kilt_dataset_processor.KILTNQ' and dataset_config['dev']['query']['init_args']['split'] == 'train':
+            self.dataset_split = 'train'
         
         self.metrics = {
             "train": RAGMetrics,
@@ -157,7 +159,8 @@ class RAG:
         print_rag_model(self, retriever_config, reranker_config, generator_config)
         
     def eval(self, dataset_split):
-
+        if hasattr(self, 'dataset_split'):
+            dataset_split = self.dataset_split
         dataset = self.datasets[dataset_split]
         query_dataset_name = self.datasets[dataset_split]['query'].name
         doc_dataset_name = self.datasets[dataset_split]['doc'].name
@@ -266,7 +269,7 @@ class RAG:
                 #raise NotImplementedError('For returning Embeddings is not yet fully implemented!')
         doc_embeds_path = get_index_path(self.index_folder, doc_dataset_name, self.retriever.get_clean_model_name(), 'doc')
         query_embeds_path = get_index_path(self.index_folder, query_dataset_name, self.retriever.get_clean_model_name(), 'query', dataset_split=dataset_split, query_generator_name=self.query_generator.get_clean_model_name())
-        if not os.path.exists(ranking_file) or self.overwrite_exp or self.overwrite_index:
+        if not os.path.exists(ranking_file) or self.overwrite_index:
             # check if retrieval without distractors exists
             ranking_file_no_distractors = get_ranking_filename(
                 self.runs_folder,
@@ -277,7 +280,7 @@ class RAG:
                 retrieve_top_k,
                 self.query_generator.get_clean_model_name()
             )
-            if ranking_file_no_distractors == ranking_file or (not os.path.exists(ranking_file_no_distractors)) or self.overwrite_exp or self.overwrite_index:
+            if self.retriever.model.model_name != "oracle_provenance" and (ranking_file_no_distractors == ranking_file or (not os.path.exists(ranking_file_no_distractors)) or self.overwrite_exp or self.overwrite_index):
                 print(f'Run {ranking_file_no_distractors} does not exist, running retrieve...')
                 # retrieve
                 out_ranking = self.retriever.retrieve(
@@ -349,7 +352,7 @@ class RAG:
             self.query_generator.get_clean_model_name()
         )
 
-        if not os.path.exists(reranking_file) or self.overwrite_exp:
+        if not os.path.exists(reranking_file):
             print(f'Run {reranking_file} does not exist, running rerank...')
             rerank_dataset = prepare_dataset_from_ids(
                     dataset, 
@@ -498,6 +501,7 @@ class RAG:
     def train(self):
         from transformers import TrainingArguments, Trainer
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PromptTuningInit, PromptTuningConfig, TaskType, PeftConfig
+        from accelerate import Accelerator
         from modules.dataset import Tokenized_Sorted_Dataset
         from omegaconf import ListConfig
 
@@ -591,6 +595,19 @@ class RAG:
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
         train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True)
+        # print(len(train_test_datasets['train']), len(train_test_datasets['test']))
+        # print(train_test_datasets['train'][0])
+        # print([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))])
+        # print(len(train_test_datasets['train'].select([i for i in range(len(train_test_datasets['train']))][:int(len(train_test_datasets['train'])*0.99)])))
+        # import sys
+        # sys.exit()
+        # train_test_datasets['train'][0] == [(length, item, tokenized_input)]
+        # filter data for length > 99% of lengths
+        # if self.debug:
+        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
+        #     print('Filtering data for length > 99% of lengths')
+        #     train_test_datasets['train'] = train_test_datasets['train'][:int(len(train_test_datasets['train'])*0.99)]
+        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
         
         # Switch back the model to 'train' mode:
         self.generator.model.train()
@@ -642,6 +659,20 @@ class RAG:
         logging_steps = max(total_steps // num_saving_steps, 1)
         print(f"Total steps: {total_steps}, eval steps: {eval_steps}, save steps: {save_steps}, logging steps: {logging_steps}")
 
+        # if self.debug:
+        #     accelerator = Accelerator()
+        #     print(accelerator.state)
+        #     print(accelerator.device)
+        #     print(accelerator.num_processes)
+        #     print(accelerator.distributed_type)
+        #     print(accelerator.local_process_index)
+        #     print(accelerator.local_process_index)
+        #     print(accelerator.local_device)
+        #     print(accelerator.global_process_index)
+        #     print(accelerator.global_device)
+        #     print(accelerator.is_main_process)
+        #     # self.generator.model, optimizer, lr_scheduler = accelerator.prepare(self.generator.model, self.training_config.optimizer, self.training_config.lr_scheduler)
+        #     self.generator.model, train_loader, eval_loader = accelerator.prepare(self.generator.model, train_test_datasets['train'], train_test_datasets['test'])
         args = TrainingArguments(
             run_name=self.run_name,
             output_dir=f'{self.experiment_folder}/train/',

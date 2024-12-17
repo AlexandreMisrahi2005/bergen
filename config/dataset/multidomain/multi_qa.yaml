@@ -21,7 +21,7 @@ dev:
     query: 
         init_args:
             _target_: modules.processors.multidomain_dataset_processor.MultiQA
-            split: "train"
+            split: "dev"
 test:
     doc: 
         null
