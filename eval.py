@@ -61,13 +61,22 @@ class Evaluate:
                     if metric_name =="att":
                         # metrics_score is a dict of different att metrics in this case
                         if nb_samples > 0:
-                            metrics_dict.update(model_score)      
+                            metrics_dict.update({f'{k}_nsamples={nb_samples}':model_score[k] for k in model_score})         
                         else:
-                            metrics_dict.update({f'{k}_{nb_samples}':model_score[k] for k in model_score})      
+                            metrics_dict.update(model_score)
 
                         for k in range(len(scores)):
                             data[k] = scores[k]
+                            print("data", data)
                         pass
+                        
+                        # Efficiently add scores to the DataFrame
+                        # new_columns = {f'score_{i}': scores[i] for i in range(len(scores))}
+                        # new_columns_df = pd.DataFrame(new_columns)
+                        # data = pd.concat([data.reset_index(drop=True), new_columns_df], axis=1)
+                        # # Optionally reassign to ensure de-fragmentation
+                        # data = data.copy()
+
                     else:
                         data[metric_name] = scores                        
                         if nb_samples >0:
@@ -78,8 +87,6 @@ class Evaluate:
                     metrics_out_file = f'{experiment_folder}/eval_{split}_out.json'
                     if nb_samples >0:
                         metrics_out_file = f'{experiment_folder}/eval_{split}_out_{nb_samples}.json'
-
-                    print(metric_name,model_score)
                         
                     # temporary print eval_out results with updated metric  (to avoid loosing eval_dev_out.json if smth goes wrong)                   
                     data.to_json(metrics_out_file+"_", orient='records') 
@@ -88,7 +95,6 @@ class Evaluate:
                     if nb_samples >0:
                         metric_name = f"{metric_name}_{nb_samples}"           
                     metrics_dict.update({metric_name: model_score})
-                    print(metric_name,model_score)
                     # save to _ tmp file
                     with open(metrics_file + '_', 'w') as fp:
                         json.dump(metrics_dict, fp, indent=2)

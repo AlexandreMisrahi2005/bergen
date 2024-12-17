@@ -54,33 +54,16 @@ class LLMDiffTransformer(BaseLLM):
         # if "A100" not in torch.cuda.get_device_name(torch.cuda.current_device):
         #     attn_implementation="sdpa"
 
-        if attn_implementation != "eager" and model_config.layers_to_transform != list(range(0,32)):
-            warnings.warn("Attn implementation is not 'eager' and not all attention layers are set to differential attention; the model might run but generate degraded results.")
+        if attn_implementation not in ["eager", "flash_attention_2"] and model_config.layers_to_transform != list(range(0,32)):
+            warnings.warn("Base model attn implementation is neither 'eager' nor 'flash_attention_2' and not all attention layers are set to differential attention; the model might run but generate unexpected results.")
         
         if model_name is not None: # we are loading a model pre-trained with the custom architecture. nothing to do, same as BaseLLM
-            if quantization == "int4":
-                quant_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type='nf4',
-                    bnb_4bit_compute_dtype='bfloat16',
-                )
-
-                self.model = AutoModelForCausalLM.from_pretrained(
-                        self.model_name,
-                        quantization_config=quant_config,
-                        attn_implementation=attn_implementation,
-                        torch_dtype=torch.bfloat16,
-                        device_map='auto',
-                    )
-            # TODO: add other quantization cases
+            if quantization is not None:
+                raise NotImplementedError("Quantization not implemented for Diff Transformer.")
+                # TODO: add/test quantization cases
             else:
-                self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, attn_implementation=attn_implementation, torch_dtype=torch.bfloat16, device_map='auto')
-                # self.model = AutoModelForCausalLM.from_pretrained(
-                #         self.model_name,
-                #         attn_implementation=attn_implementation,
-                #         torch_dtype=torch.bfloat16,
-                #         device_map='auto',
-                #     )
+                self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, torch_dtype=torch.bfloat16, device_map='auto')
+                print(self.model)
 
         elif base_model_name is not None: # otherwise we initialize the model and possibly load the base model weights
             # note in this case we do not implement quantization. If really we want quantization we would have to first load the model using the methods below (without quantization), then use save_pretrained() to save the model (without quantization) and then load it with quantization
@@ -96,7 +79,7 @@ class LLMDiffTransformer(BaseLLM):
 
             base_model = AutoModelForCausalLM.from_pretrained(
                     base_model_name, 
-                    attn_implementation=attn_implementation,
+                    attn_implementation=attn_implementation,  # if all the layers are changed to diff-attention, then regardless of the implmentation chosen, the base model attention layers will be overwritten by the diff attention module
                     torch_dtype=torch.bfloat16,
                     device_map='auto',
                 )

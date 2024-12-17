@@ -6,16 +6,21 @@ init_args:
   max_length: 2048
   batch_size: 32
   quantization: null
+  attn_implementation: null # this is the base model attention layers (will be overwritten if layers_to_transform contains all layers; unknown behavior otherwise)
   # Below are args required when loading a new diff attn model. When loading from a checkpoint, the config is automatically loaded.
   model_config:
-    attn_implementation: 'eager' # mandatory !! otherwise unexpected behavior during inference after model training
-    learn_lambda: False
-    diff_attn_lambda: 0.00
-    layers_to_transform: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
-    diff_attn_init_with_base_weights: True
-    lora_negative_term_only: False
-    attention_lora_alpha: 64
-    attention_lora_r: 32
-    attention_lora_dropout: 0.1
-    groupnorm: True
-    verbose: True
+    attn_implementation: 'eager'           # this is the diff attention implementation: 'eager' and 'flash_attention_2' are supported
+    learn_lambda: False                    # Whether to learn the lambda parameter for the Diff Attn loss. Takes precedence over diff_attn_lambda.
+    diff_attn_lambda: 0.00                 # The fixed lambda parameter for the Diff Attn. Ignored if learn_lambda is True.
+    layers_to_transform: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31] # List of layer indices to apply Diff Attn to.
+    diff_attn_init_with_base_weights: True # Whether to initialize Diff Attn weights with the base (pre-trained model) weights (for q_proj, k_proj, v_proj, and o_proj)
+    lora_negative_term_only: False         # Whether to only apply adapters on the right/negative term of diff attn (vs both positive and negative term)          If False, Q1 = X @ (W_Q1 + B_Q1 @ A_Q1); if True, Q1 = X @ W_Q1
+    negative_term_lora_only: False         # Whether to apply the adapter only (vs the adapter on top of pre-trained weights) on the negative term of diff attn.  If False, Q2 = X @ (W_Q2 + B_Q2 @ A_Q2); if True, Q2 = X @ B_Q2 @ A_Q2 (only trainable adapters) (and same for K2)
+    negative_term_full_dim: False          # Whether to learn the negative term without adapters (i.e. full dim) (vs with adapters).                              If True, Q2 = X @ W_Q2 (full trainable query projection, full meaning same dimensionality as W_Q1 (and same for K2)
+    attention_lora_alpha: 64               # The alpha parameter for the LoRA diff attention.
+    attention_lora_r: 32                   # The rank for the adapters of diff attn.
+    attention_lora_dropout: 0.1            # The dropout rate for the LoRA diff attention.
+    groupnorm: True                        # Whether to use GroupNorm (normalization across attention heads) (see diff attn paper).
+    relu_on_differential: False            # Whether to apply ReLU on the differential term i.e. ReLU(softmax(Q1K1)-softmax(Q2K2))
+    verbose: True                          # essentially prints the model layers before runs
+    dev: False

@@ -102,17 +102,114 @@ def plot_attention_map_with_bars(attentions, input_ids, prompt_len, tokenizer, s
 
     return fig
 
-
-
-def plot_attention_map(attentions, input_ids, prompt_len, tokenizer, save_path="figs/attention_map.html"):
+def plot_normalized_attention_bars(attentions, input_ids, prompt_len, tokenizer, magic_start, magic_end, query_start, query_end, save_path="figs/attention_bars.html"):
     """
-    Plots an attention map highlighting attention from generated tokens to prompt tokens.
-    
+    Plots a bar chart for average normalized attention weights using Plotly.
+
     Parameters:
     - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
     - input_ids (list[int]): List of token IDs for the input sequence.
     - prompt_len (int): Length of the prompt tokens.
     - tokenizer: The tokenizer to decode token IDs into strings.
+    - magic_start (int): Start index for the MAGIC NUMBER group in the prompt tokens.
+    - magic_end (int): End index for the MAGIC NUMBER group in the prompt tokens.
+    - query_start (int): Start index for the QUERY group.
+    - query_end (int): End index for the QUERY group.
+    - save_path (str): Path to save the generated plot (default: "attention_map.html").
+    """
+    assert len(attentions) == len(input_ids), f"Attention matrix and input IDs have different lengths: {len(attentions)} vs {len(input_ids)}"
+    # Slice the attention matrix: attentions from generated tokens to prompt tokens
+    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+
+    # Decode token IDs into strings
+    tokens = tokenizer.convert_ids_to_tokens(input_ids)
+    prompt_tokens = tokens[:prompt_len]
+    generated_tokens = tokens[prompt_len:]
+
+    # Group the attention scores
+    context_1_attention = sliced_attentions[:, :magic_start].sum(axis=1)
+    magic_attention = sliced_attentions[:, magic_start:magic_end].sum(axis=1)
+    context_2_attention = sliced_attentions[:, magic_end:query_start].sum(axis=1)
+    query_attention = sliced_attentions[:, query_start:query_end].sum(axis=1)
+
+    # Combine grouped attentions into a new array
+    grouped_attentions = np.stack(
+        [context_1_attention, magic_attention, context_2_attention, query_attention], axis=1
+    )
+
+    # Define grouped prompt tokens
+    grouped_tokens = ["CONTEXT 1", "MAGIC NUMBER", "CONTEXT 2", "QUERY"]
+
+    grouped_df = pd.DataFrame(
+        grouped_attentions,
+        index=generated_tokens,
+        columns=grouped_tokens
+    )
+
+    # Compute average attention over generated tokens and normalize
+    avg_attention = grouped_df.mean(axis=0)
+    total_attention = avg_attention.sum()
+    normalized_attention = avg_attention / total_attention
+
+    # Create a single bar chart
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            x=normalized_attention.index,
+            y=normalized_attention.values,
+            marker=dict(color="blue"),
+            name="Normalized Attention"
+        )
+    )
+
+    # Annotate the sum of attention scores on the plot
+    fig.add_annotation(
+        x=0.5, y=0.9,
+        xref="paper", yref="paper",
+        text=f"Total Attention: {total_attention:.4f}",
+        showarrow=False,
+        font=dict(size=14, color="black"),
+        align="center",
+        bgcolor="lightyellow",
+        bordercolor="black"
+    )
+
+    # Update layout for the figure
+    fig.update_layout(
+        height=600,
+        title="Normalized Attention Weights with grouped tokens",
+        xaxis=dict(title="Prompt Tokens", tickangle=45),
+        yaxis=dict(title="Normalized Attention"),
+        font=dict(size=10)
+    )
+
+    # Save the figure as an HTML file
+    fig.write_html(save_path)
+    print(f"Normalized attention bar chart saved to {save_path}")
+
+    return fig
+
+def plot_attention_with_and_without_groups(
+    attentions, input_ids, prompt_len, tokenizer,
+    magic_start, magic_end, query_start, query_end,
+    save_path="figs/normalized_attention_maps.html"
+):
+    """
+    Plots two bar charts for normalized attention weights:
+    1. Individual token attention.
+    2. Grouped token attention.
+
+    Parameters:
+    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
+    - input_ids (list[int]): List of token IDs for the input sequence.
+    - prompt_len (int): Length of the prompt tokens.
+    - tokenizer: The tokenizer to decode token IDs into strings.
+    - magic_start (int): Start index for the MAGIC NUMBER group.
+    - magic_end (int): End index for the MAGIC NUMBER group.
+    - query_start (int): Start index for the QUERY group.
+    - query_end (int): End index for the QUERY group.
+    - save_path (str): Path to save the generated plot (default: "attention_map.html").
     """
     # Slice the attention matrix: attentions from generated tokens to prompt tokens
     sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
@@ -121,39 +218,134 @@ def plot_attention_map(attentions, input_ids, prompt_len, tokenizer, save_path="
     tokens = tokenizer.convert_ids_to_tokens(input_ids)
     prompt_tokens = tokens[:prompt_len]
     generated_tokens = tokens[prompt_len:]
-    print("generated tokens: ", generated_tokens)
 
-    # Convert data into a DataFrame for Plotly
-    df = pd.DataFrame(
+    # --- Plot 1: Individual Tokens ---
+    # Compute average attention and normalize
+    individual_df = pd.DataFrame(
         sliced_attentions,
-        index=[t for t in generated_tokens],  # Add "Gen" prefix for clarity
-        columns=[t for t in prompt_tokens]  # Add "Prompt" prefix for clarity
+        index=generated_tokens,
+        columns=prompt_tokens
+    )
+    individual_avg_attention = individual_df.mean(axis=0)
+    individual_total_attention = individual_avg_attention.sum()
+    individual_normalized_attention = individual_avg_attention / individual_total_attention
+
+    # --- Plot 2: Grouped Tokens ---
+    # Group the attention scores
+    bos_attention = sliced_attentions[:, :1].sum(axis=1)
+    context_1_attention = sliced_attentions[:, 1:magic_start].sum(axis=1)
+    magic_attention = sliced_attentions[:, magic_start:magic_end].sum(axis=1)
+    context_2_attention = sliced_attentions[:, magic_end:query_start].sum(axis=1)
+    query_attention = sliced_attentions[:, query_start:].sum(axis=1)
+
+    # Combine grouped attentions into a new array
+    grouped_attentions = np.stack(
+        [bos_attention, context_1_attention, magic_attention, context_2_attention, query_attention], axis=1
     )
 
-    # Create a Plotly heatmap
-    fig = px.imshow(
-        df,
-        labels=dict(x="Prompt Tokens", y="Generated Tokens", color="Attention Weight"),
-        title="Attention Map: Generated Tokens → Prompt Tokens",
-        color_continuous_scale="Viridis"
+    # Define grouped prompt tokens
+    grouped_tokens = ["BOS", "CONTEXT 1", "<b>MAGIC NUMBER</b>", "CONTEXT 2", "QUERY"]
+
+    # Create a DataFrame for the grouped attention scores
+    grouped_df = pd.DataFrame(
+        grouped_attentions,
+        index=generated_tokens,
+        columns=grouped_tokens
+    )
+    grouped_avg_attention = grouped_df.mean(axis=0)
+    grouped_total_attention = grouped_avg_attention.sum()
+    grouped_normalized_attention = grouped_avg_attention / grouped_total_attention
+
+    # --- Create Subplots ---
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=[
+            "Normalized Attention for Individual Tokens",
+            "Normalized Attention for Grouped Tokens"
+        ],
+        vertical_spacing=0.3
     )
 
-    # Update layout for better visualization
+    # Add Plot 1: Individual Token Attention
+    fig.add_trace(
+        go.Bar(
+            x=individual_normalized_attention.index,
+            y=individual_normalized_attention.values,
+            marker=dict(color="blue"),
+            name="Individual Tokens"
+        ),
+        row=1, col=1
+    )
+
+    # Add Plot 2: Grouped Token Attention
+    fig.add_trace(
+        go.Bar(
+            x=grouped_normalized_attention.index,
+            y=grouped_normalized_attention.values,
+            marker=dict(color="green"),
+            name="Grouped Tokens"
+        ),
+        row=2, col=1
+    )
+
+    # Annotate total attention values
+    fig.add_annotation(
+        x=0.5, y=0.95,
+        xref="paper", yref="paper",
+        text=f"Total Attention (Individual Tokens): {individual_total_attention:.4f}",
+        showarrow=False,
+        font=dict(size=12, color="black"),
+        align="center",
+        bgcolor="lightyellow",
+        bordercolor="black"
+    )
+
+    fig.add_annotation(
+        x=0.5, y=0.3,
+        xref="paper", yref="paper",
+        text=f"Total Attention (Grouped Tokens): {grouped_total_attention:.4f}",
+        showarrow=False,
+        font=dict(size=12, color="black"),
+        align="center",
+        bgcolor="lightyellow",
+        bordercolor="black"
+    )
+
+    # Update layout
     fig.update_layout(
-        xaxis=dict(tickangle=45),  # Rotate x-axis labels
-        font=dict(size=10),       # Adjust font size
-        title=dict(font_size=16)  # Title font size
+        height=1000,
+        title="Attention Analysis: Individual vs Grouped Tokens",
+        xaxis=dict(title="Prompt Tokens (Individual)", tickangle=45),
+        xaxis2=dict(title="Prompt Tokens (Grouped)", tickangle=45),
+        yaxis=dict(title="Normalized Attention"),
+        yaxis2=dict(title="Normalized Attention"),
+        font=dict(size=10)
     )
 
+    # add values on top of bars on the second plot
+    for i, val in enumerate(grouped_normalized_attention.values):
+        fig.add_annotation(
+            x=i,
+            y=val,
+            text=f"{val:.4f}",
+            showarrow=False,
+            font=dict(size=10, color="black"),
+            align="center",
+            xref="x2",
+            yref="y2",
+            yshift=10
+        )
+        
     # Save the figure as an HTML file
     fig.write_html(save_path)
-    print(f"Attention map saved to {save_path}")
+    print(f"Attention analysis with individual and grouped tokens saved to {save_path}")
 
     return fig
 
+
 class LLM_att():
     def __init__(self, generator_config, prompt):
-        generator_config['init_args']['attn_implementation'] = 'sdpa'
+        # generator_config['init_args']['attn_implementation'] = 'sdpa'
         self.llm = instantiate(generator_config['init_args'], prompt=prompt)
         #breakpoint()
         #self.llm = Generate(**generator_config, prompt=prompt, flash_att=False) if generator_config != None else None   
@@ -161,12 +353,16 @@ class LLM_att():
     def collate_fn(self, sample):
         # detect if the sample is a needle in haystack test instance, match the phrase "(The magic number is xx)"
         nih = False
-        nih_res = re.search(r" \(The magic number is (\d+)\)", sample['instruction'])
+        nih_res = re.search(r" \(The magic number is (.*?)\) ", sample['instruction'])
+        # print("nih_res", nih_res, nih_res.group(0))
         if nih_res:
+            # print("nih detected")
             # extract whole phrase from text and tokenize it
             magic_phrase = nih_res.group(0)
             # tokenize it to know exactly the corresponding sequence of tokens
             magic_tokenized = self.llm.tokenizer([magic_phrase], is_split_into_words=True, add_special_tokens=False, return_tensors="pt")
+            if self.llm.tokenizer.decode(magic_tokenized['input_ids'][0][-1] == ' '):  # very edge case, if we tokenize the phrase only (with the extra space at the end which is needed to get proper tokenization), then we might get an extra space token that doesn't match the entire instruction tokenization (usually the space is part of the next token but not standalone)
+                magic_tokenized['input_ids'] = magic_tokenized['input_ids'][:,:-1]
             nih = True
         #decompotes prompt into different subparts, and keep trace of subparts position (to quantify attention at these subparts)
         instr_subset = {}
@@ -218,10 +414,19 @@ class LLM_att():
         #breakpoint()
         prompt_len = prompt_tokenized.input_ids.size(1)
         if nih:
+            # print("finding nih positions")
             # find start end positions of magic_tokenized in the prompt
             magic_start = -1
             magic_end = -1
+            # print("prompt_len", prompt_len)
+            # print("magic_tokenized.input_ids.size(1)", magic_tokenized.input_ids.size(1))
+            # print("magic_tokenized input ids: ", magic_tokenized['input_ids'])
+            # print("magic_tokenized tokens: ", [self.llm.tokenizer.decode(i) for i in magic_tokenized['input_ids'][0]])
+            # print("magic phrase: ", magic_phrase)
+            # print("prompt_tokenized input ids: ", prompt_tokenized['input_ids'])
+            # print("prompt_tokenized tokens: ", [self.llm.tokenizer.decode(i) for i in prompt_tokenized['input_ids'][0]])
             for i in range(prompt_len - magic_tokenized.input_ids.size(1)):
+
                 if torch.all(magic_tokenized['input_ids'] == prompt_tokenized['input_ids'][:, i:i+magic_tokenized.input_ids.size(1)]):
                     magic_start = i
                     magic_end = i+magic_tokenized.input_ids.size(1)
@@ -425,9 +630,11 @@ class LLM_att():
                 # print("sum of attention for each token generated after prompt", torch.sum(attentions[prompt_len:], axis=1).float().to('cpu').numpy())
                 assert batch_input_ids.shape[0] == 1
                 if j == 0:
-                    plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
+                    # plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
+                    # plot_normalized_attention_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, start_nih, end_nih, query_start, query_end, save_path=f"figs/normalized_attention_bars_{self.llm.model_name.replace('/', '_')}.{j}.html")
+                    plot_attention_with_and_without_groups(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, start_nih, end_nih, query_start, query_end, save_path=f"figs/normalized_attention_maps_{self.llm.model_name.replace('/', '_')}.{j}.html")
             elif not nih_output:
-                print("NIH output is None")
+                print(f"WARNING: NIH output is None for example {j} \nreference={references[j]} \ninstruction={instructions[j]} ")
 
             for layer in layers:
                 attentions = output['attentions'][0][layer][0]                                        
