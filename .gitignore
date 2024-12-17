@@ -10,3 +10,14 @@ tests/exp/
 tests/run/
 outputs/
 wandb/
+
+nih_hash/
+runs/
+scripts/slurm_scripts/
+*.vscode
+datasets
+experiments
+indexes
+logs
+.gitignore
+figs/
