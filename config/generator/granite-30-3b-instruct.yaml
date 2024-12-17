@@ -1,0 +1,7 @@
+init_args: 
+  _target_: models.generators.llm.LLM
+  model_name: "ibm-granite/granite-3.0-3b-a800m-instruct"
+  max_new_tokens: 128
+  max_length: 2048
+  quantization: "int4"
+  batch_size: 32

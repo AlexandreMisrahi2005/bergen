@@ -8,6 +8,7 @@ defaults:
     - dataset: ??
     - train: null
     - prompt: basic
+    # - query_generator: null  # comment if don't want search query
 
 # main variables locating the local data folder and index
 run_name: null
@@ -19,12 +20,21 @@ processed_context_folder: 'processed_contexts/'
 experiments_folder: 'experiments/'    
 
 # topk documents to retrieve, rerank and to use for generation
-retrieve_top_k: 50
-rerank_top_k: 50
+retrieve_top_k: 25
+rerank_top_k: 25
 generation_top_k: 5
 
 
-#
+#### Distractor Docs Parameters ####
+# (should not be used with reranking -- uncertain behavior as distractor already sets the number of docs to generation_top_k)
+# train_with_k_distractors: main parameter, number of distractor documents included in retrieval (must be <= generation_top_k)
+train_with_k_distractors: 0
+# optional parameters you can set along with train_with_k_distractors
+distract_with_bad_topk: false      # (default false) if true, distractors are the least good retrievals (e.g. last 5 of top 25), else they are completely random from the non-retrieved docs (any doc outside top 25)
+train_P_fraction_distractors: 1 # (default 1) for P % of train data: generation_top_k = train_with_k_distractors + top(k - train_with_k_distractors) retrievals; for 1-P % of train data: generation_top_k = only distractors
+
+
+
 pyserini_num_threads: 20
 processing_num_proc: 40
 hydra:

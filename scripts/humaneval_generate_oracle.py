@@ -7,6 +7,14 @@ from utils import get_oracle_ranking_filename
 run_folder = '../runs'
 split = 'dev'
 
+"""
+The note below is useless if you're using CodeRAGBench with each datastore separately.
+
+Note: executing this file could take a very long time since the CodeRAGBench database is 53M rows.
+However, it is constructed as the concatenation of several datasets, of which the HumanEval dataset is the first.
+So, normally the samples we are looking for in the inner for-loop are quick to find. 
+"""
+
 humaneval_dataset = datasets.load_from_disk("../datasets/CodeRAGBench_HumanEval_train")
 coderagbench_database = datasets.load_from_disk("../datasets/CodeRAGBench_programming_solutions_train")
 out_file = get_oracle_ranking_filename(run_folder, "CodeRAGBench_HumanEval", split)

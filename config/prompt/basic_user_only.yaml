@@ -1,0 +1,2 @@
+user: f"You are a helpful assistant. Your task is to extract relevant information from provided documents and to answer to questions as briefly as possible. Background:\n{docs}\n\nQuestion:\ {question}"
+user_without_docs: f"You are a helpful assistant. Answer the questions as briefly as possible. Question:\ {question}"

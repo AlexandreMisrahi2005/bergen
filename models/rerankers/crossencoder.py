@@ -23,7 +23,15 @@ class CrossEncoder(Reranker):
         doc = [e['doc'] for e in examples]
         q_id = [e['q_id'] for e in examples]
         d_id = [e['d_id'] for e in examples]
+        # try:
         inp_dict = self.tokenizer(question, doc, padding="max_length", truncation='only_second', max_length=self.max_len,return_tensors='pt')
+        # except Exception as e:
+        #     print(e)
+        #     print(question)
+        #     print(doc)
+        #     print('q_id', q_id)
+        #     print('d_id', d_id)
+        #     raise e
         inp_dict['q_id'] = q_id
         inp_dict['d_id'] = d_id
         return inp_dict

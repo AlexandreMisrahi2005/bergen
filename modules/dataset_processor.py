@@ -224,9 +224,13 @@ class MsMarcoQueries(Processor):
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
-        queries_d = json.load(open("/gfs-ssd/user/tformal/neural_search/MSMARCO/dev_queries_collection/dev_queries.json"))  # super hard-coded path, see how to do properly
-        ids, queries = zip(*queries_d.items())
-        dataset = datasets.Dataset.from_dict({"id":ids, "content": queries})  # no need for split?
+        # queries_d = json.load(open("/gfs-ssd/user/tformal/neural_search/MSMARCO/dev_queries_collection/dev_queries.json"))  # super hard-coded path, see how to do properly
+        # ids, queries = zip(*queries_d.items())
+        # dataset = datasets.Dataset.from_dict({"id":ids, "content": queries})  # no need for split?
+        # return dataset
+        dataset = datasets.load_dataset("irds/msmarco-passage_dev", 'queries', trust_remote_code=True)
+        dataset = dataset.rename_column("query_id", "id")
+        dataset = dataset.rename_column("text", "content")
         return dataset
 
 # ---------------------------------------- #
@@ -412,14 +416,14 @@ class ODQAWikiCorpora63tamberALL(Processor):
         return dataset
 
 
-class PubMed2023(Processor):
+class PubMed2024(Processor):
 
     def __init__(self, *args, **kwargs):
-        self.dataset_name = 'PubMed-2023'
+        self.dataset_name = 'PubMed-2024'
         super().__init__(*args, **kwargs, dataset_name=self.dataset_name)
     
     def process(self):
-        hf_name ="ncbi/pubmed"
+        hf_name ="ncbi/pubmed" # https://huggingface.co/datasets/ncbi/pubmed
         dataset = datasets.load_dataset(hf_name, num_proc=self.num_proc, trust_remote_code=True)[self.split]
                 
         def map_fn(example):
@@ -483,7 +487,7 @@ class MsMarcoCollection(Processor):
     def process(self):
         # load from the ir-dataset HF repo
         hf_name = "irds/msmarco-passage"
-        dataset = datasets.load_dataset(hf_name, 'docs', num_proc=self.num_proc)  # no need for split?
+        dataset = datasets.load_dataset(hf_name, 'docs', num_proc=self.num_proc, trust_remote_code=True)  # no need for split?
         dataset = dataset.rename_column("doc_id", "id")
         dataset = dataset.rename_column("text", "content")
         return dataset
@@ -600,6 +604,7 @@ class ProcessDatasets:
                     if field_value is None:
                         raise ValueError(f"Found None value in '{field_name}' field.")
                     elif isinstance(field_value, list) and None in field_value:
+                        print(example)
                         raise ValueError(f"Found None in list in '{field_name}' field.")
                     elif isinstance(field_value, str) and len(field_value.strip()) == 0:
                         raise ValueError(f"Found empty value in '{field_name}' field.")

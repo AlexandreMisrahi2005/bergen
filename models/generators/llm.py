@@ -141,8 +141,11 @@ class LLM(Generator):
 
         prompt_len = instr_tokenized['input_ids'].size(1)
         generated_ids = output_ids[:, prompt_len:]
+        del output_ids
         decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
+        del generated_ids
+        torch.cuda.empty_cache()
+        gc.collect()
         return decoded
         
     def __del__(self):

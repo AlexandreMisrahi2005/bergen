@@ -1,12 +1,14 @@
 train:
     doc: 
-        init_args:
-            _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC_docs
-            split: all
+        null
+        # init_args:
+        #     _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC_docs
+        #     split: all
     query: 
-        init_args:
-            _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC
-            split: train
+        null
+        # init_args:
+        #     _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC
+        #     split: train
 dev:
     doc: 
         init_args:
@@ -18,10 +20,12 @@ dev:
             split: validation
 test:
     doc: 
-        init_args:
-            _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC_docs
-            split: all
+        null
+        # init_args:
+        #     _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC_docs
+        #     split: all
     query: 
-        init_args:
-            _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC
-            split: test
+        null
+        # init_args:
+        #     _target_: modules.processors.multidomain_dataset_processor.ParaphraseRC
+        #     split: test

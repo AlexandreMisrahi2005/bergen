@@ -12,7 +12,6 @@ import os
 
 from urllib.parse import unquote
 
-
 class BIOASQ12B(Processor):
     """ 
     BIOASQ Benchmark from bioasq challenge source, year 2024 task B (12B)
@@ -501,6 +500,85 @@ class SyllabusQA_syllabi(Processor):
         dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_chunks))
         return dataset
 
+class NarrativeQA(Processor):
+    def __init__(self, *args, **kwargs):
+        dataset_name = 'NarrativeQA'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("deepmind/narrativeqa", num_proc=self.num_proc)[self.split]
+
+        def map_fn(example):
+            example["id"] = example["document"]["id"]
+            example['content'] = f"{example['document']['summary']['title']}: {example['question']['text'].lower()}"
+            example['label'] = [example["answers"][1]["text"]]
+            return example
+        
+        ds = ds.map(map_fn, num_proc=self.num_proc)
+        return ds
+
+class NarrativeQA_docs(Processor):
+    def __init__(self, *args, **kwargs):
+        self.chunk_size, self.overlap, self.type = None, None, None
+        if "type" in kwargs:
+            self.type = kwargs["type"]
+            del kwargs['type']
+        if "chunk_size" in kwargs and "overlap" in kwargs:
+            self.chunk_size = kwargs["chunk_size"]
+            self.overlap = kwargs["overlap"]
+            del kwargs['chunk_size']
+            del kwargs['overlap']
+        dataset_name = f"NarrativeQA_docs_CHS_{self.chunk_size}_OVLP_{self.overlap}" if self.chunk_size is not None and self.overlap is not None else "NarrativeQA_docs"
+        dataset_name = "NarrativeQA_docs_summary" if self.type == "summary" else "NarrativeQA_docs"
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        ds = datasets.load_dataset("deepmind/narrativeqa", num_proc=self.num_proc)[self.split]
+
+        def chunk_text(text, chunk_size=100, overlap=20):
+            # chunk according to words
+            tokens = text.split()
+            num_tokens = len(tokens)
+            
+            chunks = []
+            for i in range(0, num_tokens, chunk_size - overlap):
+                chunk_tokens = tokens[i:i + chunk_size]
+                
+                # If this is the last chunk and there's still some remaining text, capture it fully
+                if i + chunk_size >= num_tokens:
+                    chunk_tokens = tokens[i:]
+                    
+                chunk = ' '.join(chunk_tokens)
+                chunks.append(chunk)
+                
+                if len(chunk_tokens) < chunk_size:
+                    break
+            return chunks
+                
+        new_data = {"id": [], "content": []}
+        ids_seen = set()
+        for row in ds:
+            doc_id = row["document"]["id"]
+            if doc_id in ids_seen:
+                continue
+            ids_seen.add(doc_id)
+            if self.type is not None and self.type == "summary":
+                text = f"{row['document']['summary']['title']}: {row['document']['summary']['text']}"
+                new_id = f"{doc_id}"
+                new_data["id"].append(new_id)
+                new_data["content"].append(text)
+            else:
+                text = row["document"]["text"]
+                chunks = chunk_text(text, chunk_size=self.chunk_size, overlap=self.overlap)
+                for chunk_idx, chunk in enumerate(chunks):
+                    new_id = f"{doc_id}_{chunk_idx + 1}"
+                    new_data["id"].append(new_id)
+                    chunk = f"{row['document']['summary']['title']}: {chunk}"
+                    new_data["content"].append(chunk)
+        chunked_dataset = datasets.Dataset.from_dict(new_data)
+                
+        return chunked_dataset
+    
 
 class MultiQA(Processor):
     """
@@ -523,8 +601,35 @@ class MultiQA(Processor):
         super().__init__(*args, **kwargs, dataset_name=dataset_name)
 
     def process(self):
-        ds = datasets.load_dataset("dmrau/multi_qa", num_proc=self.num_proc)[self.split]
+        ds = datasets.load_dataset("dmrau/multi_qa", num_proc=self.num_proc)["train"]
+        if self.split == 'dev':
+            # take 1000 rows at random, reproducibly
+            ds = ds.shuffle(seed=42).select(range(1000))
         return ds
+
+class MultiQA_Reformulated(Processor):
+    def __init__(self, path, *args, **kwargs):
+        dataset_name = 'MultiQA_rf_short'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+        self.path = path
+
+    def process(self):
+        ds = datasets.load_from_disk(self.path)
+        def map_fn(example):
+            assert example['label'] is not None, f"id {example['id']} has None label"
+            example['label'] = [example['label']]
+            return example
+        ds = ds.map(map_fn, num_proc=self.num_proc)
+        return ds
+
+class MultiQA_Reformulated_Filtered(Processor):
+    def __init__(self, path, *args, **kwargs):
+        dataset_name = 'MultiQA_rf_filtered'
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+        self.path = path
+
+    def process(self):
+        return datasets.load_from_disk(self.path)
     
 
 class TechQA(Processor):
@@ -857,4 +962,21 @@ class SearchQA_corpus(Processor):
             print("There are duplicate URLs in the dataset. Using custom ids.")
             all_urls = [f"{i}" for i in range(len(all_search_results))]
         dataset = datasets.Dataset.from_pandas(pd.DataFrame({"content": all_search_results, "id": all_urls})).filter(lambda x: x['content'] is not None)
+        return dataset
+    
+
+class MultiQA_distill_mistral7B(Processor):
+    """
+    Load MultiQA train split generations by mistral-7B
+    """
+    def __init__(self, path: str, *args, **kwargs):
+        dataset_name = 'MultiQA_distill_mistral7B'
+        self.path = path # path to eval_dev_out.json (generations of mistral-7b)
+        super().__init__(*args, **kwargs, dataset_name=dataset_name)
+
+    def process(self):
+        with open(self.path, 'r') as f:
+            data = json.load(f)
+            all_data = [{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "instruction": d["instruction"], "true_label":d["label"]} for d in data]
+        dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_data))
         return dataset

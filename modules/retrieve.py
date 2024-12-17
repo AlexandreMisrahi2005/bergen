@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 import torch
 import os 
 import glob
+import random
 from hydra.utils import instantiate
 from utils import load_embeddings
 
@@ -74,7 +75,7 @@ class Retrieve:
             
             query_embeds = load_embeddings(query_embeds_path)
             query_embeds = query_embeds.to_dense().to('cuda')
-            #query_embeds = query_embeds.to('cuda')
+            # query_embeds = query_embeds.to('cuda')
             self.model.model = self.model.model.to('cpu')
 
             # separate query embedding in chunks
@@ -151,7 +152,7 @@ class Retrieve:
         num_emb = 0
         for emb_chunk in doc_embeds:
             emb_chunk = emb_chunk.to('cuda')
-            scores_q = self.model.similarity_fn(emb_q, emb_chunk)
+            scores_q = self.model.similarity_fn(emb_q.float(), emb_chunk.float())
             # if detach_and_cpu:
             #     scores_q = scores_q.detach().cpu().float()
             scores_sorted_q, indices_sorted_q = torch.topk(scores_q, top_k_documents, dim=1)
@@ -188,7 +189,7 @@ class Retrieve:
    
 
     def tokenize(self, example):
-       return self.model.tokenize(example)
+        return self.model.tokenize(example)
     
     def get_clean_model_name(self):
         return self.model.model_name.replace('/', '_')
@@ -197,4 +198,53 @@ class Retrieve:
         return f'{save_path}/embedding_chunk_{chunk}.pt'
 
 
+    @staticmethod
+    def add_distractor_docs(doc_ids, k, generation_top_k, all_doc_ids=None, distract_with_bad_topk=False, scores=None):
+        """
+        Replace k randomly-sampled retrieved document ids with k distractors
+        Should not be used in combination with re-ranking (because we truncate to generation_top_k in this function)
+        Args:
+            doc_ids: List, with shape (number of queries, number of retrieved docs per query)
+            k: int, number of distractor docs to insert in each doc_ids retrieval
+            generation_top_k: int
+            all_doc_ids: List, with shape (number of docs in docs dataset)
+            distract_with_bad_topk: bool, whether to take the distractors from the least well scored retrieved docs
+            scores: List[List[float]], if provided, will return a same-sized array with new scores
+        Returns:
+            modified_doc_ids: doc_ids modified with distractor doc ids
+        """
+        assert (all_doc_ids is not None and not distract_with_bad_topk) or (all_doc_ids is None and distract_with_bad_topk)
+        modified_doc_ids = []
+        modified_scores = [] if scores is not None else None
+        for docs,docs_score in tqdm(zip(doc_ids,scores), desc="Adding distractors"):
+            
+            if not distract_with_bad_topk:
+                # select k docs not already in retrieval
+                distractors = random.sample(all_doc_ids, k)
+            elif distract_with_bad_topk:
+                # select k docs from the lowest scores
+                distractors = docs[-k:]
+            
+            # select k docs from retrieval (top-generation_top_k) to switch
+            # replace_indices = random.sample(range(generation_top_k), k)
+            # select the least relevant docs retrieved to be replaced
+            replace_indices = list(range(generation_top_k - 1, generation_top_k - k - 1, -1)) # e.g. [4, 3, 2] for k=3,generation_top_k=5
+            
+            # replace
+            new_docs = docs[:]
+            new_docs_score = docs_score[:]
+            for idx, distractor in zip(replace_indices, distractors):
+                new_docs[idx] = distractor
+                new_docs_score[idx] = -1
 
+            # shuffle new docs (now contains best docs + distractors in random order)
+            indices = list(range(generation_top_k))
+            random.shuffle(indices)
+            shuffled_new_docs = [new_docs[i] for i in indices] + new_docs[generation_top_k:]
+            shuffled_new_docs_score = [new_docs_score[i] for i in indices] + new_docs_score[generation_top_k:]
+
+            modified_doc_ids.append(shuffled_new_docs)
+            if modified_scores is not None:
+                modified_scores.append(shuffled_new_docs_score)
+        
+        return modified_doc_ids, modified_scores

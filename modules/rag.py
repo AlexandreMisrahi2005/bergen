@@ -8,8 +8,10 @@ This file contains the main pipeline for RAG: training using RAG and evaluation 
 import time 
 import shutil
 import os 
-import json
+import random
 from tqdm import tqdm
+import json
+import torch
 from hydra.utils import instantiate
 
 import pandas as pd
@@ -17,7 +19,7 @@ import numpy as np
 from utils import (
     eval_retrieval_kilt, init_experiment, move_finished_experiment,
     write_trec, prepare_dataset_from_ids, load_trec,
-    print_generate_out, print_rag_model,
+    print_generate_out, print_rag_model, print_prepared_distracted_dataset_examples,
     write_generated, write_dict, get_by_id, get_index_path, get_query_generation_filename,
     get_context_processing_filename,
     get_reranking_filename, format_time, get_ranking_filename, get_finished_experiment_name
@@ -98,6 +100,9 @@ class RAG:
                 retrieve_top_k=1,
                 rerank_top_k=1,
                 generation_top_k=1,
+                train_with_k_distractors=0,
+                distract_with_bad_topk=False,
+                train_P_fraction_distractors=1,
                 pyserini_num_threads=1,
                 config=None,
                 debug=False,
@@ -147,12 +152,17 @@ class RAG:
         self.retrieve_top_k = retrieve_top_k
         self.rerank_top_k = rerank_top_k
         self.generation_top_k = generation_top_k
+        self.train_with_k_distractors = train_with_k_distractors
+        self.distract_with_bad_topk = distract_with_bad_topk
+        self.train_P_fraction_distractors = train_P_fraction_distractors
         self.pyserini_num_threads = pyserini_num_threads
         self.overwrite_exp = overwrite_exp
         self.overwrite_index = overwrite_index
         self.training_config = train
 
         assert self.generation_top_k <= self.rerank_top_k <= self.retrieve_top_k
+        assert self.train_with_k_distractors <= self.generation_top_k
+        assert 0 <= self.train_P_fraction_distractors <= 1
         # init experiment (set run name, create dirs)
         self.run_name, self.experiment_folder = init_experiment(config, experiments_folder, index_folder, runs_folder, run_name, overwrite_exp=self.overwrite_exp, continue_batch=continue_batch)
         # process datasets, downloading, loading, covert to format
@@ -165,6 +175,8 @@ class RAG:
             shuffle_labels=True if generator_config is not None and generator_config.init_args.model_name == 'random_answer' else False,
             oracle_provenance=True if retriever_config is not None and retriever_config.init_args.model_name == 'oracle_provenance' else False,
             )
+        if dataset_config['dev']['query']['init_args']['_target_'] == 'modules.processors.kilt_dataset_processor.KILTNQ' and dataset_config['dev']['query']['init_args']['split'] == 'train':
+            self.dataset_split = 'train'
         
         self.metrics = {
             "train": RAGMetrics,
@@ -194,7 +206,8 @@ class RAG:
         print_rag_model(self, retriever_config, reranker_config, generator_config)
         
     def eval(self, dataset_split):
-
+        if hasattr(self, 'dataset_split'):
+            dataset_split = self.dataset_split
         dataset = self.datasets[dataset_split]
         query_dataset_name = self.datasets[dataset_split]['query'].name
         doc_dataset_name = self.datasets[dataset_split]['doc'].name
@@ -283,7 +296,8 @@ class RAG:
                  doc_dataset_name,
                  dataset_split, 
                  retrieve_top_k,
-                 eval_ranking=True,
+                 train_with_k_distractors=0,
+                 eval_ranking=False,
                  ):
         
         ranking_file = get_ranking_filename(
@@ -293,22 +307,51 @@ class RAG:
             self.retriever.get_clean_model_name(),
             dataset_split, 
             retrieve_top_k,
-            self.query_generator.get_clean_model_name()
+            self.query_generator.get_clean_model_name(),
+            train_with_k_distractors=train_with_k_distractors,
+            distract_with_bad_topk=self.distract_with_bad_topk, # used only if train_with_k_distractors > 0
+            generation_top_k=self.generation_top_k,       # used only if train_with_k_distractors > 0
         )
         doc_embeds_path = get_index_path(self.index_folder, doc_dataset_name, self.retriever.get_clean_model_name(), 'doc')
         query_embeds_path = get_index_path(self.index_folder, query_dataset_name, self.retriever.get_clean_model_name(), 'query', dataset_split=dataset_split, query_generator_name=self.query_generator.get_clean_model_name())
-        if not os.path.exists(ranking_file) or self.overwrite_exp or self.overwrite_index:
-            print(f'Run {ranking_file} does not exists, running retrieve...')
-             # retrieve
-            out_ranking = self.retriever.retrieve(
-                dataset,
-                query_embeds_path,
-                doc_embeds_path,
+        if not os.path.exists(ranking_file) or self.overwrite_index:
+            # check if retrieval without distractors exists
+            ranking_file_no_distractors = get_ranking_filename(
+                self.runs_folder,
+                query_dataset_name,
+                doc_dataset_name,
+                self.retriever.get_clean_model_name(),
+                dataset_split, 
                 retrieve_top_k,
-                overwrite_index=self.overwrite_index
-                )
-            query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
-            write_trec(ranking_file, query_ids, doc_ids, scores)
+                self.query_generator.get_clean_model_name()
+            )
+            if self.retriever.model.model_name != "oracle_provenance" and (ranking_file_no_distractors == ranking_file or (not os.path.exists(ranking_file_no_distractors)) or self.overwrite_exp or self.overwrite_index):
+                print(f'Run {ranking_file_no_distractors} does not exist, running retrieve...')
+                # retrieve
+                out_ranking = self.retriever.retrieve(
+                    dataset,
+                    query_embeds_path,
+                    doc_embeds_path,
+                    retrieve_top_k,
+                    overwrite_index=self.overwrite_index
+                    )
+                query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
+                print(f"Saving retrieval run to {ranking_file_no_distractors}")
+                write_trec(ranking_file_no_distractors, query_ids, doc_ids, scores)
+            else:
+                query_ids, doc_ids, scores = load_trec(ranking_file_no_distractors)
+            if train_with_k_distractors > 0:
+                print("Adding distractors to retrieval...")
+                doc_ids, scores = self.retriever.add_distractor_docs(
+                    doc_ids, 
+                    self.train_with_k_distractors, 
+                    self.generation_top_k,
+                    all_doc_ids=dataset['doc']['id'] if not self.distract_with_bad_topk else None,
+                    distract_with_bad_topk=self.distract_with_bad_topk,
+                    scores=scores,
+                    )
+                print(f"Saving retrieval run to {ranking_file}")
+                write_trec(ranking_file, query_ids, doc_ids, scores)
         else:             
             query_ids, doc_ids, scores = load_trec(ranking_file)
         # copy ranking file to experiment folder    
@@ -353,7 +396,8 @@ class RAG:
             self.query_generator.get_clean_model_name()
         )
 
-        if not os.path.exists(reranking_file) or self.overwrite_exp:
+        if not os.path.exists(reranking_file):
+            print(f'Run {reranking_file} does not exist, running rerank...')
             rerank_dataset = prepare_dataset_from_ids(
                     dataset, 
                     query_ids, 
@@ -368,22 +412,22 @@ class RAG:
             # copy reranking file to experiment folder 
             shutil.copyfile(reranking_file, f'{self.experiment_folder}/{reranking_file.split("/")[-1]}')
             query_ids, doc_ids, scores = load_trec(reranking_file)
-        if 'ranking_label' in self.datasets[dataset_split]['query'].features:
-            print('Evaluating retrieval...')
-            wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
-            eval_retrieval_kilt(
-                self.experiment_folder, 
-                self.qrels_folder, 
-                query_dataset_name, 
-                doc_dataset_name,
-                dataset_split, 
-                query_ids, 
-                wiki_doc_ids, 
-                scores, 
-                top_k=self.generation_top_k, 
-                reranking=True, 
-                debug=self.debug
-                )
+        # if 'ranking_label' in self.datasets[dataset_split]['query'].features:
+        #     print('Evaluating retrieval...')
+        #     wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
+        #     eval_retrieval_kilt(
+        #         self.experiment_folder, 
+        #         self.qrels_folder, 
+        #         query_dataset_name, 
+        #         doc_dataset_name,
+        #         dataset_split, 
+        #         query_ids, 
+        #         wiki_doc_ids, 
+        #         scores, 
+        #         top_k=self.generation_top_k, 
+        #         reranking=True, 
+        #         debug=self.debug
+        #         )
         return query_ids, doc_ids, scores
 
     def process_context(self, gen_dataset, 
@@ -499,10 +543,11 @@ class RAG:
         
 
     def train(self):
-        import torch
         from transformers import TrainingArguments, Trainer
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PromptTuningInit, PromptTuningConfig, TaskType, PeftConfig
+        from accelerate import Accelerator
         from modules.dataset import Tokenized_Sorted_Dataset
+        from omegaconf import ListConfig
 
         dataset_split = 'train'
         dataset = self.datasets[dataset_split] 
@@ -525,8 +570,30 @@ class RAG:
                 doc_dataset_name,
                 dataset_split, 
                 self.retrieve_top_k,
+                self.train_with_k_distractors,
                 eval_ranking=False
-                )            
+                )
+            docs_distractors_memory = None
+            if self.train_P_fraction_distractors < 1:   # need 1 retrieval with only random docs
+                print(f"Filling with all random retrievals for {100*(1-self.train_P_fraction_distractors)}% of the queries")
+                print(f"Filling with {self.train_with_k_distractors}/{self.generation_top_k} random retrievals for {100*self.train_P_fraction_distractors}% of the queries")
+                rand_query_ids, rand_doc_ids, _ = self.retrieve(
+                    dataset, 
+                    query_dataset_name, 
+                    doc_dataset_name,
+                    dataset_split, 
+                    self.retrieve_top_k,
+                    train_with_k_distractors=self.generation_top_k, # nb of distractors is the nb of docs to retrieve
+                    eval_ranking=False
+                    )
+                rand_mapping = {qid: did for qid, did in zip(rand_query_ids, rand_doc_ids)}
+                docs_distractors_memory = {}
+                for i in range(len(query_ids)):
+                    if random.random() > self.train_P_fraction_distractors:
+                        doc_ids[i] = rand_mapping[query_ids[i]]  # replace doc ids with entirely random ones 1-P% of the time
+                        docs_distractors_memory[query_ids[i]] = 0 # no oracles
+                    else:
+                        docs_distractors_memory[query_ids[i]] = 1 # some oracles
         else:
             query_ids, doc_ids = None, None
 
@@ -551,6 +618,9 @@ class RAG:
             doc_ids, 
             multi_doc=True, 
             )
+        
+        if self.train_with_k_distractors > 0:
+            print_prepared_distracted_dataset_examples(gen_dataset, docs_distractors_memory)
 
         # context processing if needed
         if self.context_processor is not None and self.retriever is not None:
@@ -569,6 +639,19 @@ class RAG:
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
         train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True)
+        # print(len(train_test_datasets['train']), len(train_test_datasets['test']))
+        # print(train_test_datasets['train'][0])
+        # print([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))])
+        # print(len(train_test_datasets['train'].select([i for i in range(len(train_test_datasets['train']))][:int(len(train_test_datasets['train'])*0.99)])))
+        # import sys
+        # sys.exit()
+        # train_test_datasets['train'][0] == [(length, item, tokenized_input)]
+        # filter data for length > 99% of lengths
+        # if self.debug:
+        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
+        #     print('Filtering data for length > 99% of lengths')
+        #     train_test_datasets['train'] = train_test_datasets['train'][:int(len(train_test_datasets['train'])*0.99)]
+        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
         
         # Switch back the model to 'train' mode:
         self.generator.model.train()
@@ -593,22 +676,47 @@ class RAG:
             self.generator.model = prepare_model_for_kbit_training(self.generator.model)
             print("using lora training")
             # lora config
+            target_modules = list(self.training_config.lora.target_modules) if isinstance(self.training_config.lora.target_modules, ListConfig) else self.training_config.lora.target_modules
+            self.training_config.lora.__delattr__('target_modules')
             lora_config = LoraConfig(
+                target_modules=target_modules,
                 **self.training_config.lora,
-                target_modules='all-linear',
                 )
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
+            print("Model after inputting loradapters: \n", self.generator.model)
+            try:
+                from models.generators.llm_diff_transformer import LLMDiffTransformer
+            except ImportError:
+                print("LLMDiffTransformer not found after LoRA init. May lead to unexpected training behavior.")
+            if isinstance(self.generator, LLMDiffTransformer):
+                # reactivate the parameters because peft freezes everything from the base model
+                self.generator.model.unfreeze_adapters()
             self.generator.model.print_trainable_parameters()
             self.generator.model = self.generator.model.bfloat16()
 
         total_batch_size = self.training_config.trainer.per_device_train_batch_size * torch.cuda.device_count()
-        total_steps = len(train_test_datasets['train']) // total_batch_size
+        total_steps = self.training_config.trainer.num_train_epochs * (len(train_test_datasets['train']) // total_batch_size) // self.training_config.trainer.gradient_accumulation_steps
         num_saving_steps = self.training_config.num_saving_steps
         eval_steps =  max(total_steps// num_saving_steps, 1)
         save_steps = max(total_steps  // num_saving_steps, 1)
         logging_steps = max(total_steps // num_saving_steps, 1)
+        print(f"Total steps: {total_steps}, eval steps: {eval_steps}, save steps: {save_steps}, logging steps: {logging_steps}")
 
+        # if self.debug:
+        #     accelerator = Accelerator()
+        #     print(accelerator.state)
+        #     print(accelerator.device)
+        #     print(accelerator.num_processes)
+        #     print(accelerator.distributed_type)
+        #     print(accelerator.local_process_index)
+        #     print(accelerator.local_process_index)
+        #     print(accelerator.local_device)
+        #     print(accelerator.global_process_index)
+        #     print(accelerator.global_device)
+        #     print(accelerator.is_main_process)
+        #     # self.generator.model, optimizer, lr_scheduler = accelerator.prepare(self.generator.model, self.training_config.optimizer, self.training_config.lr_scheduler)
+        #     self.generator.model, train_loader, eval_loader = accelerator.prepare(self.generator.model, train_test_datasets['train'], train_test_datasets['test'])
         args = TrainingArguments(
             run_name=self.run_name,
             output_dir=f'{self.experiment_folder}/train/',
@@ -617,7 +725,7 @@ class RAG:
             eval_steps=eval_steps,
             save_steps=save_steps,
             logging_steps=logging_steps,
-            load_best_model_at_end=True,
+            load_best_model_at_end=False,
             remove_unused_columns=False,
         )
         
@@ -628,19 +736,21 @@ class RAG:
             args=args,
             data_collator=self.generator.collate_fn,
             train_dataset=train_test_datasets['train'],
-            eval_dataset=train_test_datasets['test']
+            eval_dataset=train_test_datasets['test'],
         )
-        
-        trainer.evaluate()
-        
-        trainer.train()
+
+        print("before training, trainer evaluate =")
+        print(trainer.evaluate())
+        print("== start training ==")
+        trainer.train(resume_from_checkpoint=self.training_config.resume_from_checkpoint)
+        print("== end training ==")
+
         self.generator.model = trainer.model
-        
+
         if gradient_ckpt_enabled:
             self.generator.model.gradient_checkpointing_disable()
         
         # Restoring eval mode now that training is done
         self.generator.model.eval()
-
         move_finished_experiment(self.experiment_folder)
         self.experiment_folder = get_finished_experiment_name(self.experiment_folder)

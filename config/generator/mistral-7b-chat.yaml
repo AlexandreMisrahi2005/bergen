@@ -5,4 +5,5 @@ init_args:
   max_length: 32000
   batch_size: 16
   max_doc_len: 100
+  quantization: "int8"
 

@@ -28,6 +28,7 @@ class Generator(ABC):
         self.max_length = max_length
 
     @abstractmethod
+    @torch.no_grad()
     def generate(self, inp):
         pass
     
