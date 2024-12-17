@@ -4,7 +4,6 @@
 
 import hydra
 from multiprocess import set_start_method
-from torch.distributed.elastic.multiprocessing.errors import record
 import os
 import json
 if 'CONFIG' in  os.environ:
@@ -13,7 +12,6 @@ else:
     CONFIG= 'rag'
 
 @hydra.main(config_path="config", config_name=CONFIG, version_base="1.2")
-@record
 def main(config):
 
     from modules.rag import RAG

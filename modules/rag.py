@@ -412,22 +412,22 @@ class RAG:
             # copy reranking file to experiment folder 
             shutil.copyfile(reranking_file, f'{self.experiment_folder}/{reranking_file.split("/")[-1]}')
             query_ids, doc_ids, scores = load_trec(reranking_file)
-        # if 'ranking_label' in self.datasets[dataset_split]['query'].features:
-        #     print('Evaluating retrieval...')
-        #     wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
-        #     eval_retrieval_kilt(
-        #         self.experiment_folder, 
-        #         self.qrels_folder, 
-        #         query_dataset_name, 
-        #         doc_dataset_name,
-        #         dataset_split, 
-        #         query_ids, 
-        #         wiki_doc_ids, 
-        #         scores, 
-        #         top_k=self.generation_top_k, 
-        #         reranking=True, 
-        #         debug=self.debug
-        #         )
+        if 'ranking_label' in self.datasets[dataset_split]['query'].features:
+            print('Evaluating retrieval...')
+            wiki_doc_ids = [get_by_id(dataset['doc'], doc_ids_q, 'wikipedia_id') for doc_ids_q in doc_ids]
+            eval_retrieval_kilt(
+                self.experiment_folder, 
+                self.qrels_folder, 
+                query_dataset_name, 
+                doc_dataset_name,
+                dataset_split, 
+                query_ids, 
+                wiki_doc_ids, 
+                scores, 
+                top_k=self.generation_top_k, 
+                reranking=True, 
+                debug=self.debug
+                )
         return query_ids, doc_ids, scores
 
     def process_context(self, gen_dataset, 
@@ -639,19 +639,6 @@ class RAG:
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
         train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True)
-        # print(len(train_test_datasets['train']), len(train_test_datasets['test']))
-        # print(train_test_datasets['train'][0])
-        # print([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))])
-        # print(len(train_test_datasets['train'].select([i for i in range(len(train_test_datasets['train']))][:int(len(train_test_datasets['train'])*0.99)])))
-        # import sys
-        # sys.exit()
-        # train_test_datasets['train'][0] == [(length, item, tokenized_input)]
-        # filter data for length > 99% of lengths
-        # if self.debug:
-        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
-        #     print('Filtering data for length > 99% of lengths')
-        #     train_test_datasets['train'] = train_test_datasets['train'][:int(len(train_test_datasets['train'])*0.99)]
-        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
         
         # Switch back the model to 'train' mode:
         self.generator.model.train()
@@ -703,20 +690,6 @@ class RAG:
         logging_steps = max(total_steps // num_saving_steps, 1)
         print(f"Total steps: {total_steps}, eval steps: {eval_steps}, save steps: {save_steps}, logging steps: {logging_steps}")
 
-        # if self.debug:
-        #     accelerator = Accelerator()
-        #     print(accelerator.state)
-        #     print(accelerator.device)
-        #     print(accelerator.num_processes)
-        #     print(accelerator.distributed_type)
-        #     print(accelerator.local_process_index)
-        #     print(accelerator.local_process_index)
-        #     print(accelerator.local_device)
-        #     print(accelerator.global_process_index)
-        #     print(accelerator.global_device)
-        #     print(accelerator.is_main_process)
-        #     # self.generator.model, optimizer, lr_scheduler = accelerator.prepare(self.generator.model, self.training_config.optimizer, self.training_config.lr_scheduler)
-        #     self.generator.model, train_loader, eval_loader = accelerator.prepare(self.generator.model, train_test_datasets['train'], train_test_datasets['test'])
         args = TrainingArguments(
             run_name=self.run_name,
             output_dir=f'{self.experiment_folder}/train/',
