@@ -9,6 +9,7 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
     model_type = "llama_lora_diff_transformer"
 
     def __init__(self, 
+                 attn_implementation: str = "eager",
                  learn_lambda: bool = False,
                  diff_attn_lambda: float = 0.0,
                  layers_to_transform: List[int] = list(range(0,32)),
@@ -26,6 +27,7 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
                  **kwargs):
         """
         Args:
+        - attn_implementation: The attention implementation to use. Can be "eager" or "flash_attention_2".
         - learn_lambda: Whether to learn the lambda parameter for the Diff Attn loss. Takes precedence over diff_attn_lambda.
         - diff_attn_lambda: The fixed lambda parameter for the Diff Attn. Ignored if learn_lambda is True.
         - layers_to_transform: List of layer indices to apply Diff Attn to.
@@ -39,12 +41,12 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         - groupnorm: Whether to use GroupNorm (normalization across attention heads) (see diff attn paper).
         - relu_on_differential: Whether to apply ReLU on the differential term i.e. ReLU(softmax(Q1K1)-softmax(Q2K2))
         - verbose: Whether to print verbose logs.
-        - dev: activate dev mode (for debugging).
         """
         if learn_lambda and diff_attn_lambda > 0.0:
             logger.warning("learn_lambda is True, but diff_attn_lambda is non-zero. Diff Attn lambdas will be learnable.")
         if negative_term_lora_only and negative_term_full_dim:
             raise ValueError("negative_term_lora_only and negative_term_full_dim cannot be True at the same time.")
+        self.diff_attn_implementation = attn_implementation
         self.learn_lambda = learn_lambda
         self.diff_attn_lambda = diff_attn_lambda
         self.layers_to_transform = list(layers_to_transform)
@@ -58,7 +60,6 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         self.groupnorm = groupnorm
         self.relu_on_differential = relu_on_differential
         self.verbose = verbose
-        self.dev = dev
         if "attn_implementation" in kwargs and self.relu_on_differential and kwargs["attn_implementation"] == "flash_attention_2":
             logger.warning("ReLU on differential term is not supported with flash_attention_2. Setting relu_on_differential to False.")
             self.relu_on_differential = False

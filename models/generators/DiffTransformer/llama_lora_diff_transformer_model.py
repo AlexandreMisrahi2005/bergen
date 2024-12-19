@@ -32,10 +32,14 @@ class DiffAttentionMixin:
             nn.init.zeros_(self.wq_lora_B1.weight)
             nn.init.zeros_(self.wk_lora_B1.weight)
 
-        nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
-        nn.init.kaiming_uniform_(self.wk_lora_A2.weight, a=math.sqrt(5))
-        nn.init.zeros_(self.wq_lora_B2.weight)
-        nn.init.zeros_(self.wk_lora_B2.weight)
+        if self.negative_term_full_dim:
+            nn.init.kaiming_uniform_(self.wq_2.weight, a=math.sqrt(5))
+            nn.init.kaiming_uniform_(self.wk_2.weight, a=math.sqrt(5))
+        else:
+            nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
+            nn.init.kaiming_uniform_(self.wk_lora_A2.weight, a=math.sqrt(5))
+            nn.init.zeros_(self.wq_lora_B2.weight)
+            nn.init.zeros_(self.wk_lora_B2.weight)
 
     def reset_weights_from_base_model(self):
         """
@@ -49,26 +53,27 @@ class DiffAttentionMixin:
     def set_weights_from_base_model(self, base_model_layer_attn):
         """
         Set the weights W_Q, W_K, W_V, W_O to the base model weights
-        Should be called from outside the model
         """
         self.q_proj.weight.data = base_model_layer_attn.q_proj.weight.data.clone()
         self.k_proj.weight.data = base_model_layer_attn.k_proj.weight.data.clone()
         self.v_proj.weight.data = base_model_layer_attn.v_proj.weight.data.clone()
         self.o_proj.weight.data = base_model_layer_attn.o_proj.weight.data.clone()
 
-    def freeze_parameters(self, config: LlamaLoraDiffTransformerConfig = None):
+    def freeze_parameters(self):
         """
-        Default: Freeze all parameters except for the LoRA parameters
-        TODO: add cases from config
+        Freeze all parameters except for the LoRA parameters
         """
         for name, param in self.named_parameters():
-            if 'lambda' in name or 'lora' in name or 'subln' in name:
+            if 'lambda' in name or 'lora' in name or 'subln' in name or (self.negative_term_full_dim and ('wq_2' in name or 'wk_2' in name)):
                 param.requires_grad = True
             else:
                 param.requires_grad = False
 
     def extra_repr(self):
-        # overloads the nn.Module method to include lambdas when printing model (not printed by default because are not named submodules, just parameters)
+        """
+        overloads the nn.Module method to include lambdas and/or other diff-attn stuff when printing model 
+        (some stuff is not printed by default because they are not named submodules, just parameters)
+        """
         lambdas_repr = ""
         if self.learn_lambda:
             lambdas_repr = f"(lambda_q1): Parameter({self.lambda_q1.shape})\n(lambda_k1): Parameter({self.lambda_k1.shape})\n(lambda_q2): Parameter({self.lambda_q2.shape})\n(lambda_k2): Parameter({self.lambda_k2.shape})"
@@ -113,15 +118,13 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
             self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
-        self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r
+        self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
         self.subln = None
         if config.groupnorm:
             self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5)
         self.relu = None
         if config.relu_on_differential:
             self.relu = nn.ReLU()
-        # self.freeze_parameters(config)
-        self.dev = config.dev
         
     def forward(
         self,
@@ -313,12 +316,10 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
         self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
-        self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r
+        self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
         self.subln = None
         if config.groupnorm:
             self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5)
-        # self.freeze_parameters(config)
-        self.dev = config.dev
 
     def forward(
         self,
@@ -490,7 +491,7 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         attn_output = attn_output_1 - lambda_full * attn_output_2 # diff attn
         # Diff Attn: A = (sm(Q1K1^T/sqrt(d)) - lambda * sm(Q2K2^T/sqrt(d))) @ V
-        #              = sm(Q1K1^T/sqrt(d)V - lambda * sm(Q2K2^T/sqrt(d))V
+        #              = sm(Q1K1^T/sqrt(d) @ V - lambda * sm(Q2K2^T/sqrt(d)) @ V
         #              = flashattention(Q1, K1, V) - lambda * flashattention(Q2, K2, V)
 
         if self.subln is not None:
@@ -499,9 +500,6 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        # if self.dev and self.layer_idx == 0:
-        #     print(f"attn_output: {attn_output.size()}\t{attn_output[0, 0, :10]}")
 
         if not output_attentions:
             attn_weights = None
@@ -521,7 +519,18 @@ class LlamaLoraDiffTransformerModel(LlamaModel):
         super().__init__(config)
         for layer_idx,layer in enumerate(self.layers):
             if isinstance(layer.self_attn, LlamaAttention) and layer_idx in config.layers_to_transform:
-                layer.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
+                # HF might set config._attn_implementation to 'sdpa' by default when loading a checkpoint so we need a custom attribute for diff attn implementation
+                if hasattr(config, "diff_attn_implementation"):
+                    attn_implementation = config.diff_attn_implementation
+                elif hasattr(config, "_attn_implementation"):
+                    attn_implementation = config._attn_implementation
+                else:
+                    print(f"WARNING: [loading attn at layer {layer_idx}] no attn implementation found in config. Setting it to 'eager'.")
+                    attn_implementation = "eager"
+                if attn_implementation not in LLAMA_ATTENTION_CLASSES:
+                    print(f"WARNING: [loading attn at layer {layer_idx}] attn implementation `{attn_implementation}` is unknown or not implemented for diff attention. Setting it to 'eager'.")
+                    attn_implementation = "eager"
+                layer.self_attn = LLAMA_ATTENTION_CLASSES[attn_implementation](config=config, layer_idx=layer_idx)
 
 class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
     # edit base __init__ to change self.model + freeze params + load base model weights + other configs if any
@@ -541,7 +550,7 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
             param.requires_grad = False
         for i,layer in enumerate(self.model.layers):
             if i in config.layers_to_transform:
-                layer.self_attn.freeze_parameters(config) # this activates the LoRA parameters
+                layer.self_attn.freeze_parameters() # this activates the LoRA parameters
             else:
                 for _, param in layer.named_parameters():
                     param.requires_grad = False
@@ -615,23 +624,18 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
         assert len(unexpected_keys) == 0, "Unexpected keys found in the model state dict. Please check the model architecture."
         if self.config.verbose:
             print("Loaded base weights.")
-            missing_keys_without_lora_params = [key for key in missing_keys if 'lora' not in key and 'subln' not in key and 'lambda' not in key]
-            assert len(missing_keys_without_lora_params) == 0, f"Missing keys (excluding LoRA, subln, lambda): {missing_keys_without_lora_params}"
-            # print("Num missing keys =", len(missing_keys))
-            # print("Missing keys (excluding LoRA, subln, lambda): ", missing_keys_without_lora_params) # we expect no missing keys apart from the diff attn lora layers
-            # print("Unexpected keys: ", unexpected_keys)
-            for key in missing_keys:
-                assert "lora" in key or "subln" in key or "lambda" in key, f"Missing key {key}"
+        missing_keys_without_lora_params = [key for key in missing_keys if 'lora' not in key and 'subln' not in key and 'lambda' not in key and 'wk_2' not in key and 'wq_2' not in key]
+        assert len(missing_keys_without_lora_params) == 0, f"Missing keys (excluding LoRA, subln, lambda): {missing_keys_without_lora_params}"
 
     def load_diff_attn_weights(self, adapters_state_dict):
         missing_keys, unexpected_keys = self.load_state_dict(adapters_state_dict, strict=False)
-        assert len(unexpected_keys) == 0, f"{len(unexpected_keys)} unexpected keys found in the model state dict: \n{unexpected_keys}"
         if self.config.verbose:
             print("Loaded diff attn weights.")
             # print("Num missing keys when loading adapters =", len(missing_keys))
             # print("Num keys that are not LoRA, subln, lambda = ", len([key for key in self.state_dict().keys() if 'lora' not in key and 'subln' not in key and 'lambda' not in key]))
-            assert len([key for key in self.state_dict().keys() if 'lora' not in key and 'subln' not in key and 'lambda' not in key]) == 0, f"Missing keys = {len(missing_keys)}"
-            
+        assert len(unexpected_keys) == 0, f"{len(unexpected_keys)} unexpected keys found in the model state dict: \n{unexpected_keys}"
+        assert len([key for key in missing_keys if 'lora' in key or 'subln' in key or 'lambda' in key or 'wq_2' in key or 'wk_2' in key]) == 0, f"Missing keys = {missing_keys}"
+
     def load_base_weights_and_adapters(self, concat_state_dict):
         missing_keys, unexpected_keys = self.load_state_dict(concat_state_dict, strict=True)
         assert len(missing_keys) == 0 and len(unexpected_keys) == 0, f"Missing keys = {len(missing_keys)} || Unexpected keys = {len(unexpected_keys)}"
