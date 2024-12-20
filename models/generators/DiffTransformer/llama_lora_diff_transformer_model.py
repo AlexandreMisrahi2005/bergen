@@ -284,6 +284,8 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
 
         if not output_attentions:
             attn_weights = None
+        elif output_attentions:
+            attn_weights = torch.cat([attn_weights.detach().clone().unsqueeze(2), attn_weights_1.detach().clone().unsqueeze(2), lambda_full * attn_weights_2.detach().clone().unsqueeze(2)], dim=2) # (b, num_heads, q_len, q_len) -> (b, num_heads, 2, q_len, q_len)
 
         return attn_output, attn_weights, past_key_value
 
@@ -304,16 +306,21 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         self.lora_negative_term_only = config.lora_negative_term_only
         self.negative_term_lora_only = config.negative_term_lora_only
+        self.negative_term_full_dim = config.negative_term_full_dim
         if not self.lora_negative_term_only:
             self.wq_lora_A1 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
             self.wq_lora_B1 = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
             self.wk_lora_A1 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
             self.wk_lora_B1 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
 
-        self.wq_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
-        self.wq_lora_B2 = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
-        self.wk_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
-        self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
+        if self.negative_term_full_dim:
+            self.wq_2 = nn.Linear(self.num_heads * self.head_dim, self.num_heads * self.head_dim, bias=False)
+            self.wk_2 = nn.Linear(self.num_heads * self.head_dim, self.num_key_value_heads * self.head_dim, bias=False)
+        else:
+            self.wq_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wq_lora_B2 = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
+            self.wk_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
@@ -349,28 +356,24 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         if not self.lora_negative_term_only:
             lora_query_states_1 = self.wq_lora_B1(self.wq_lora_A1(self.lora_dropout(hidden_states))) * self.lora_scaling # X @ wq_A1 @ wq_B1 = (b, q_len, hidden_dim) @ (hidden_dim, r) @ (r, hidden_dim) = (b, q_len, hidden_dim)
-        lora_query_states_2 = self.wq_lora_B2(self.wq_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as query_states_1
-        if not self.lora_negative_term_only:
             lora_key_states_1 = self.wk_lora_B1(self.wk_lora_A1(self.lora_dropout(hidden_states))) * self.lora_scaling # X @ wk_A1 @ wk_B1 = (b, q_len, hidden_dim) @ (hidden_dim, r) @ (r, num_key_value_heads * head_dim) = (b, q_len, self.num_key_value_heads * self.head_dim)
-        lora_key_states_2 = self.wk_lora_B2(self.wk_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as key_states_1
-        if not self.lora_negative_term_only:
-            assert all((
-                lora_query_states_1.size() == torch.Size([bsz, q_len, self.num_heads * self.head_dim]),
-                lora_query_states_2.size() == torch.Size([bsz, q_len, self.num_heads * self.head_dim]),
-                lora_key_states_1.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
-                lora_key_states_2.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
-            )), f"lora_query_states_1.size() = {lora_query_states_1.size()}, lora_query_states_2.size() = {lora_query_states_2.size()}, lora_key_states_1.size() = {lora_key_states_1.size()}, lora_key_states_2.size() = {lora_key_states_2.size()}"
-        
+        if self.negative_term_full_dim:
+            lora_query_states_2 = self.wq_2(self.lora_dropout(hidden_states))
+            lora_key_states_2 = self.wk_2(self.lora_dropout(hidden_states))
+        else:
+            lora_query_states_2 = self.wq_lora_B2(self.wq_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as query_states_1
+            lora_key_states_2 = self.wk_lora_B2(self.wk_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as key_states_1
+
         if not self.lora_negative_term_only:
             query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
             key_states_1 = key_states + lora_key_states_1 # (b, q_len, self.num_key_value_heads * self.head_dim)
         else:
             query_states_1 = query_states
             key_states_1 = key_states
-        if self.negative_term_lora_only:
-            query_states_2 = query_states
-            key_states_2 = key_states
-        else:   
+        if self.negative_term_lora_only or self.negative_term_full_dim:
+            query_states_2 = lora_query_states_2
+            key_states_2 = lora_key_states_2
+        else:
             query_states_2 = query_states + lora_query_states_2 # (b, q_len, hidden_dim)
             key_states_2 = key_states + lora_key_states_2 # (b, q_len, self.num_key_value_heads * self.head_dim)
 

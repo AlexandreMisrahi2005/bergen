@@ -46,6 +46,8 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
             logger.warning("learn_lambda is True, but diff_attn_lambda is non-zero. Diff Attn lambdas will be learnable.")
         if negative_term_lora_only and negative_term_full_dim:
             raise ValueError("negative_term_lora_only and negative_term_full_dim cannot be True at the same time.")
+        if attn_implementation == 'flash_attention_2' and relu_on_differential:
+            raise ValueError("ReLU on differential term is not supported with flash_attention_2.")
         self.diff_attn_implementation = attn_implementation
         self.learn_lambda = learn_lambda
         self.diff_attn_lambda = diff_attn_lambda
