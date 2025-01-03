@@ -22,6 +22,7 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
                  attention_lora_dropout: float = 0.1,
                  groupnorm: bool = True,
                  relu_on_differential: bool = False,
+                 flash_attn_deterministic_backward: bool = False,
                  verbose: bool = False,
                  dev: bool = False,
                  **kwargs):
@@ -40,6 +41,7 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         - attention_lora_dropout: The dropout rate for the LORA diff attention.
         - groupnorm: Whether to use GroupNorm (normalization across attention heads) (see diff attn paper).
         - relu_on_differential: Whether to apply ReLU on the differential term i.e. ReLU(softmax(Q1K1)-softmax(Q2K2))
+        - flash_attn_deterministic_backward: Whether to use deterministic backward pass for Flash Attention.
         - verbose: Whether to print verbose logs.
         """
         if learn_lambda and diff_attn_lambda > 0.0:
@@ -48,9 +50,14 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
             raise ValueError("negative_term_lora_only and negative_term_full_dim cannot be True at the same time.")
         if attn_implementation == 'flash_attention_2' and relu_on_differential:
             raise ValueError("ReLU on differential term is not supported with flash_attention_2.")
+        if flash_attn_deterministic_backward and attn_implementation != 'flash_attention_2':
+            logger.warning("flash_attn_deterministic_backward is True, but attn_implementation is not flash_attention_2. Ignoring.")
         self.diff_attn_implementation = attn_implementation
         self.learn_lambda = learn_lambda
-        self.diff_attn_lambda = diff_attn_lambda
+        if isinstance(diff_attn_lambda, float):
+            self.diff_attn_lambda = diff_attn_lambda
+        else: # is specified for each layer
+            self.diff_attn_lambda = list(diff_attn_lambda)
         self.layers_to_transform = list(layers_to_transform)
         self.diff_attn_init_with_base_weights = diff_attn_init_with_base_weights
         self.lora_negative_term_only = lora_negative_term_only
@@ -61,10 +68,13 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         self.attention_lora_dropout = attention_lora_dropout
         self.groupnorm = groupnorm
         self.relu_on_differential = relu_on_differential
+        self.fa_deterministic_backward = flash_attn_deterministic_backward
         self.verbose = verbose
         if "attn_implementation" in kwargs and self.relu_on_differential and kwargs["attn_implementation"] == "flash_attention_2":
             logger.warning("ReLU on differential term is not supported with flash_attention_2. Setting relu_on_differential to False.")
             self.relu_on_differential = False
         super().__init__(**kwargs)
+        if isinstance(self.diff_attn_lambda, list):
+            assert len(self.diff_attn_lambda) == self.num_hidden_layers, "diff_attn_lambda must be a float or a list of floats with length equal to the number of layers. Found length {} and num_hidden_layers {}.".format(len(self.diff_attn_lambda), self.num_hidden_layers)
 
 LlamaLoraDiffTransformerConfig.register_for_auto_class()

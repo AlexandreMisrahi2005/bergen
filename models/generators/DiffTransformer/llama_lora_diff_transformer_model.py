@@ -35,11 +35,16 @@ class DiffAttentionMixin:
         if self.negative_term_full_dim:
             nn.init.kaiming_uniform_(self.wq_2.weight, a=math.sqrt(5))
             nn.init.kaiming_uniform_(self.wk_2.weight, a=math.sqrt(5))
-        else:
+        elif self.negative_term_lora_only: # if adapters only gradients don't propagate if B is 0
+            nn.init.kaiming_uniform_(self.wq_lora_B2.weight, a=math.sqrt(5))
+            nn.init.kaiming_uniform_(self.wk_lora_B2.weight, a=math.sqrt(5))
             nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
             nn.init.kaiming_uniform_(self.wk_lora_A2.weight, a=math.sqrt(5))
+        else:
             nn.init.zeros_(self.wq_lora_B2.weight)
             nn.init.zeros_(self.wk_lora_B2.weight)
+            nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
+            nn.init.kaiming_uniform_(self.wk_lora_A2.weight, a=math.sqrt(5))
 
     def reset_weights_from_base_model(self):
         """
@@ -84,20 +89,20 @@ class DiffAttentionMixin:
         return  lambdas_repr
 
 
-class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
+class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
     """Multi-headed differential attention from 'Differential Transformer' paper: https://arxiv.org/abs/2410.05258"""
 
     def __init__(self, config: LlamaLoraDiffTransformerConfig, layer_idx: int):
         super().__init__(config, layer_idx)
         self.learn_lambda = config.learn_lambda
         if self.learn_lambda:
-            self.lambda_init = lambda_init_fn(layer_idx)
+            self.lambda_init = config.diff_attn_lambda if config.diff_attn_lambda != 0 else lambda_init_fn(layer_idx)
             self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
             self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
             self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
             self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1), requires_grad=True)
         else:
-            self.lambda_init = config.diff_attn_lambda
+            self.lambda_init = config.diff_attn_lambda if isinstance(config.diff_attn_lambda, float) else config.diff_attn_lambda[layer_idx]
 
         self.lora_negative_term_only = config.lora_negative_term_only
         self.negative_term_lora_only = config.negative_term_lora_only
@@ -119,12 +124,8 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
-        self.subln = None
-        if config.groupnorm:
-            self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5)
-        self.relu = None
-        if config.relu_on_differential:
-            self.relu = nn.ReLU()
+        self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5) if config.groupnorm else None
+        self.relu = nn.ReLU() if config.relu_on_differential else None
         
     def forward(
         self,
@@ -152,6 +153,7 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
                 value_states.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
             )), f"query_states.size() = {query_states.size()}, key_states.size() = {key_states.size()}, value_states.size() = {value_states.size()}"
 
+            # compute adapter query/key states
             if not self.lora_negative_term_only:
                 lora_query_states_1 = self.wq_lora_B1(self.wq_lora_A1(self.lora_dropout(hidden_states))) * self.lora_scaling # X @ wq_A1 @ wq_B1 = (b, q_len, hidden_dim) @ (hidden_dim, r) @ (r, hidden_dim) = (b, q_len, hidden_dim)
                 lora_key_states_1 = self.wk_lora_B1(self.wk_lora_A1(self.lora_dropout(hidden_states))) * self.lora_scaling # X @ wk_A1 @ wk_B1 = (b, q_len, hidden_dim) @ (hidden_dim, r) @ (r, num_key_value_heads * head_dim) = (b, q_len, self.num_key_value_heads * self.head_dim)
@@ -169,6 +171,7 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
                     lora_key_states_2.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                 )), f"lora_query_states_1.size() = {lora_query_states_1.size()}, lora_query_states_2.size() = {lora_query_states_2.size()}, lora_key_states_1.size() = {lora_key_states_1.size()}, lora_key_states_2.size() = {lora_key_states_2.size()}"
             
+            # add adapter query/key states to original query/key states
             if not self.lora_negative_term_only:
                 query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
                 key_states_1 = key_states + lora_key_states_1 # (b, q_len, self.num_key_value_heads * self.head_dim)
@@ -201,13 +204,12 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
         query_states_1, key_states_1 = apply_rotary_pos_emb(query_states_1, key_states_1, cos, sin)
         query_states_2, key_states_2 = apply_rotary_pos_emb(query_states_2, key_states_2, cos, sin)
 
-        # TODO: check if this is correct
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
 
-            # concatenate key_states along the head_dim dimension for easier cache management 
-            # this way we 'pretend' the head dim is twice is truly is, but we can store both key_1 and key_2 in the cache without modifying how cache works
+            # concatenate key_states along the head_dim dimension for cache 
+            # this way we can store both key_1 and key_2 in the cache without modifying how cache works
             key_states_cache = torch.cat([key_states_1, key_states_2], dim=-1) # concat to shape (b, num_key_value_heads, q_len, 2 * head_dim)
             key_states_cache, value_states = past_key_value.update(key_states_cache, value_states, self.layer_idx, cache_kwargs)
             total_q_len = key_states_cache.size(-2)
@@ -239,9 +241,9 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
 
         if attention_mask is not None:  # no matter the length, we just slice it
             # TODO: this can if loop probably be removed since attn_implementation bug is fixed
-            if attention_mask.dim() == 2: # depending on gpu type and inference setup (training or not, flash-attention, etc) attention mask can be 2D or 4D
-                # Expand attention mask to 4D
-                attention_mask = attention_mask[:, None, None, :].expand(-1, 1, hidden_states.size(1), -1) # TODO: check this is correct (+ implement flash attention)
+            # if attention_mask.dim() == 2: # depending on gpu type and inference setup (training or not, flash-attention, etc) attention mask can be 2D or 4D
+            #     # Expand attention mask to 4D
+            #     attention_mask = attention_mask[:, None, None, :].expand(-1, 1, hidden_states.size(1), -1) # TODO: check this is correct (+ implement flash attention)
             causal_mask = attention_mask[:, :, :, : key_states_1.shape[-2]] # (b, 1, q_len, q_len)
             
             attn_weights_1 = attn_weights_1 + causal_mask
@@ -288,8 +290,11 @@ class LlamaLoraDiffAttention(LlamaAttention, DiffAttentionMixin):
             attn_weights = torch.cat([attn_weights.detach().clone().unsqueeze(2), attn_weights_1.detach().clone().unsqueeze(2), lambda_full * attn_weights_2.detach().clone().unsqueeze(2)], dim=2) # (b, num_heads, q_len, q_len) -> (b, num_heads, 2, q_len, q_len)
 
         return attn_output, attn_weights, past_key_value
+    
+    def extra_repr(self):
+        return super().extra_repr()
 
-class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
+class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
     """Flash attention implementation using https://github.com/xiayuqing0622/flex_head_fa """
 
     def __init__(self, config: LlamaLoraDiffTransformerConfig, layer_idx: int):
@@ -324,9 +329,8 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
-        self.subln = None
-        if config.groupnorm:
-            self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5)
+        self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5) if config.groupnorm else None
+        self.deterministic_backward = config.fa_deterministic_backward
 
     def forward(
         self,
@@ -347,7 +351,6 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
             )
 
         output_attentions = False
-
         bsz, q_len, _ = hidden_states.size()  # X = (batch, q_len, hidden_dim) where hidden_dim = num_heads * head_dim; note in QA task q_len > 1 in first pass and q_len=1 in next passes (cached context);
 
         query_states = self.q_proj(hidden_states)
@@ -380,9 +383,6 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
         # therefore we just need to keep the original shape
-        # query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        # key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        # value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         query_states_1 = query_states_1.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
         query_states_2 = query_states_2.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
         key_states_1 = key_states_1.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_key_value_heads, q_len, head_dim)
@@ -399,14 +399,12 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
             cos, sin = self.rotary_emb(value_states, position_ids)
         else:
             cos, sin = position_embeddings
-        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         query_states_1, key_states_1 = apply_rotary_pos_emb(query_states_1, key_states_1, cos, sin)
         query_states_2, key_states_2 = apply_rotary_pos_emb(query_states_2, key_states_2, cos, sin)
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
             # concatenate key_states along the head_dim dimension for easier cache management 
             # this way we 'pretend' the head dim is twice is truly is, but we can store both key_1 and key_2 in the cache without modifying how cache works
@@ -422,14 +420,11 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
 
         # TODO: These transpose are quite inefficient but Flash Attention requires the layout [batch_size, sequence_length, num_heads, head_dim]. We would need to refactor the KV cache
         # to be able to avoid many of these transpose/reshape/view.
-        # query_states = query_states.transpose(1, 2)
-        # key_states = key_states.transpose(1, 2)
         query_states_1 = query_states_1.transpose(1, 2)
         query_states_2 = query_states_2.transpose(1, 2)
         key_states_1 = key_states_1.transpose(1, 2)
         key_states_2 = key_states_2.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-
 
         dropout_rate = self.attention_dropout if self.training else 0.0
 
@@ -463,27 +458,8 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
             key_states_2 = key_states_2.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # attn_output = _flash_attention_forward(
-        #     query_states,
-        #     key_states,
-        #     value_states,
-        #     attention_mask,
-        #     q_len,
-        #     position_ids=position_ids,
-        #     dropout=dropout_rate,
-        #     sliding_window=getattr(self, "sliding_window", None),
-        #     use_top_left_mask=self._flash_attn_uses_top_left_mask,
-        #     is_causal=self.is_causal,
-        # )
-        # currenty: 
-        # q = bsz, total_q_len, self.num_heads, self.head_dim
-        # k = bsz, total_q_len, self.num_key_value_heads, self.head_dim
-        # expects:
-        # q: (batch_size, seqlen, nheads, headdim)
-        # k: (batch_size, seqlen, nheads_k, headdim)
-        # v: (batch_size, seqlen, nheads_k, headdim)
-        attn_output_1 = flash_attn_func(query_states_1, key_states_1, value_states, dropout_p=dropout_rate, causal=True)
-        attn_output_2 = flash_attn_func(query_states_2, key_states_2, value_states, dropout_p=dropout_rate, causal=True)
+        attn_output_1 = flash_attn_func(query_states_1, key_states_1, value_states, dropout_p=dropout_rate, causal=True, deterministic=self.deterministic_backward)
+        attn_output_2 = flash_attn_func(query_states_2, key_states_2, value_states, dropout_p=dropout_rate, causal=True, deterministic=self.deterministic_backward)
 
         if self.learn_lambda:
             lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(query_states)
@@ -492,10 +468,10 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
         else:
             lambda_full = self.lambda_init
 
-        attn_output = attn_output_1 - lambda_full * attn_output_2 # diff attn
-        # Diff Attn: A = (sm(Q1K1^T/sqrt(d)) - lambda * sm(Q2K2^T/sqrt(d))) @ V
+        # Differential Attn: A = (sm(Q1K1^T/sqrt(d)) - lambda * sm(Q2K2^T/sqrt(d))) @ V
         #              = sm(Q1K1^T/sqrt(d) @ V - lambda * sm(Q2K2^T/sqrt(d)) @ V
         #              = flashattention(Q1, K1, V) - lambda * flashattention(Q2, K2, V)
+        attn_output = attn_output_1 - lambda_full * attn_output_2
 
         if self.subln is not None:
             attn_output = self.subln(attn_output)
@@ -508,6 +484,9 @@ class LlamaLoraFlashDiffAttention2(LlamaFlashAttention2, DiffAttentionMixin):
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
+
+    def extra_repr(self):
+        return super().extra_repr()
     
 
 LLAMA_ATTENTION_CLASSES = {
