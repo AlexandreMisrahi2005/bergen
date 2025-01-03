@@ -331,6 +331,7 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
         self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5) if config.groupnorm else None
         self.deterministic_backward = config.fa_deterministic_backward
+        self.relu = nn.ReLU() if config.relu_on_differential else None
 
     def forward(
         self,
