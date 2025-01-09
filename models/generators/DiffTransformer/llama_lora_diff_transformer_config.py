@@ -20,11 +20,12 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
                  attention_lora_alpha: int = 64,
                  attention_lora_r: int = 32,
                  attention_lora_dropout: float = 0.1,
+                 lora_v: bool = False,
+                 lora_o: bool = False,
                  groupnorm: bool = True,
                  relu_on_differential: bool = False,
                  flash_attn_deterministic_backward: bool = False,
                  verbose: bool = False,
-                 dev: bool = False,
                  **kwargs):
         """
         Args:
@@ -39,6 +40,8 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         - attention_lora_alpha: The alpha parameter for the LORA diff attention.
         - attention_lora_r: The rank for the adapters of diff attn.
         - attention_lora_dropout: The dropout rate for the LORA diff attention.
+        - lora_v: Whether to put an adapter on V in the attention.
+        - lora_o: Whether to put an adapter on O in the attention.
         - groupnorm: Whether to use GroupNorm (normalization across attention heads) (see diff attn paper).
         - relu_on_differential: Whether to apply ReLU on the differential term i.e. ReLU(softmax(Q1K1)-softmax(Q2K2))
         - flash_attn_deterministic_backward: Whether to use deterministic backward pass for Flash Attention.
@@ -66,6 +69,8 @@ class LlamaLoraDiffTransformerConfig(LlamaConfig):
         self.attention_lora_alpha = attention_lora_alpha
         self.attention_lora_r = attention_lora_r
         self.attention_lora_dropout = attention_lora_dropout
+        self.lora_v = lora_v
+        self.lora_o = lora_o
         self.groupnorm = groupnorm
         self.relu_on_differential = relu_on_differential
         self.fa_deterministic_backward = flash_attn_deterministic_backward

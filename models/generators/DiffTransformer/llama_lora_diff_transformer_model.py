@@ -46,6 +46,13 @@ class DiffAttentionMixin:
             nn.init.kaiming_uniform_(self.wq_lora_A2.weight, a=math.sqrt(5))
             nn.init.kaiming_uniform_(self.wk_lora_A2.weight, a=math.sqrt(5))
 
+        if self.config.lora_v:
+            nn.init.kaiming_uniform_(self.wv_lora_A.weight, a=math.sqrt(5))
+            nn.init.zeros_(self.wv_lora_B.weight)
+        if self.config.lora_o:
+            nn.init.kaiming_uniform_(self.wo_lora_A.weight, a=math.sqrt(5))
+            nn.init.zeros_(self.wo_lora_B.weight)
+
     def reset_weights_from_base_model(self):
         """
         Reset the weights W_Q, W_K, W_V, W_O
@@ -122,6 +129,13 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
             self.wk_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
             self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
 
+        if config.lora_v:
+            self.wv_lora_A = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wv_lora_B = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
+        if config.lora_o:
+            self.wo_lora_A = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wo_lora_B = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
+
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
         self.subln = LlamaRMSNorm(self.head_dim, eps=1e-5) if config.groupnorm else None
@@ -171,6 +185,11 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
                     lora_key_states_2.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                 )), f"lora_query_states_1.size() = {lora_query_states_1.size()}, lora_query_states_2.size() = {lora_query_states_2.size()}, lora_key_states_1.size() = {lora_key_states_1.size()}, lora_key_states_2.size() = {lora_key_states_2.size()}"
 
+            if self.config.lora_v:
+                lora_value_states = self.wv_lora_B(self.wv_lora_A(self.lora_dropout(hidden_states))) * self.lora_scaling
+            if self.config.lora_o:
+                lora_output_states = self.wo_lora_B(self.wo_lora_A(self.lora_dropout(hidden_states))) * self.lora_scaling
+
             # add adapter query/key states to original query/key states
             if not self.lora_negative_term_only:
                 query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
@@ -184,6 +203,8 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
             else:
                 query_states_2 = query_states + lora_query_states_2 # (b, q_len, hidden_dim)
                 key_states_2 = key_states + lora_key_states_2 # (b, q_len, self.num_key_value_heads * self.head_dim)
+            if self.config.lora_v:
+                value_states = value_states + lora_value_states
 
         query_states_1 = query_states_1.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
         query_states_2 = query_states_2.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # reshape to (b, num_heads, q_len, head_dim)
@@ -283,6 +304,8 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
         attn_output = attn_output.reshape(bsz, q_len, -1) # (b, q_len, num_heads, head_dim) -> (b, q_len, num_heads * head_dim) = (b, q_len, hidden_dim)
 
         attn_output = self.o_proj(attn_output) # (b, q_len, hidden_dim) @ (hidden_dim, hidden_dim) = (b, q_len, hidden_dim)
+        if self.config.lora_o:
+            attn_output = attn_output + lora_output_states
 
         if not output_attentions:
             attn_weights = None
@@ -326,6 +349,13 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
             self.wq_lora_B2 = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
             self.wk_lora_A2 = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
             self.wk_lora_B2 = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
+        
+        if config.lora_v:
+            self.wv_lora_A = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wv_lora_B = nn.Linear(config.attention_lora_r, self.num_key_value_heads * self.head_dim, bias=False)
+        if config.lora_o:
+            self.wo_lora_A = nn.Linear(self.num_heads * self.head_dim, config.attention_lora_r, bias=False)
+            self.wo_lora_B = nn.Linear(config.attention_lora_r, self.num_heads * self.head_dim, bias=False)
 
         self.lora_dropout = nn.Dropout(p=config.attention_lora_dropout)
         self.lora_scaling = config.attention_lora_alpha / config.attention_lora_r if config.attention_lora_r is not None and config.attention_lora_alpha is not None else 1.0
@@ -368,6 +398,11 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
             lora_query_states_2 = self.wq_lora_B2(self.wq_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as query_states_1
             lora_key_states_2 = self.wk_lora_B2(self.wk_lora_A2(self.lora_dropout(hidden_states))) * self.lora_scaling # same as key_states_1
 
+        if self.config.lora_v:
+            lora_value_states = self.wv_lora_B(self.wv_lora_A(self.lora_dropout(hidden_states))) * self.lora_scaling
+        if self.config.lora_o:
+            lora_output_states = self.wo_lora_B(self.wo_lora_A(self.lora_dropout(hidden_states))) * self.lora_scaling
+
         if not self.lora_negative_term_only:
             query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
             key_states_1 = key_states + lora_key_states_1 # (b, q_len, self.num_key_value_heads * self.head_dim)
@@ -380,6 +415,8 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
         else:
             query_states_2 = query_states + lora_query_states_2 # (b, q_len, hidden_dim)
             key_states_2 = key_states + lora_key_states_2 # (b, q_len, self.num_key_value_heads * self.head_dim)
+        if self.config.lora_v:
+            value_states = value_states + lora_value_states
 
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
@@ -480,6 +517,8 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
 
         attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
+        if self.config.lora_o:
+            attn_output = attn_output + lora_output_states
 
         if not output_attentions:
             attn_weights = None
@@ -524,7 +563,7 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.post_init()
         for layer in self.model.layers:
-            if isinstance(layer.self_attn, LlamaLoraDiffAttention):
+            if isinstance(layer.self_attn, (LlamaLoraDiffAttention, LlamaLoraFlashDiffAttention2)):
                 layer.self_attn.init_diff_attn_lora()
         print(f"Initialized diff attn weights for layer(s) {set(list(range(config.num_hidden_layers))).intersection(set(config.layers_to_transform))}")
 
