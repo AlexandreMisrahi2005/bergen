@@ -170,7 +170,7 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
                     lora_key_states_1.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                     lora_key_states_2.size() == torch.Size([bsz, q_len, self.num_key_value_heads * self.head_dim]),
                 )), f"lora_query_states_1.size() = {lora_query_states_1.size()}, lora_query_states_2.size() = {lora_query_states_2.size()}, lora_key_states_1.size() = {lora_key_states_1.size()}, lora_key_states_2.size() = {lora_key_states_2.size()}"
-            
+
             # add adapter query/key states to original query/key states
             if not self.lora_negative_term_only:
                 query_states_1 = query_states + lora_query_states_1 # (b, q_len, hidden_dim)
@@ -270,7 +270,7 @@ class LlamaLoraDiffAttention(DiffAttentionMixin, LlamaAttention):
         # GroupNorm is layer normalization but applied to each head independently
         if self.subln is not None:
             attn_output = self.subln(attn_output)
-        attn_output = attn_output * (1 - self.lambda_init)
+            attn_output = attn_output * (1 - self.lambda_init)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -476,7 +476,7 @@ class LlamaLoraFlashDiffAttention2(DiffAttentionMixin, LlamaFlashAttention2):
 
         if self.subln is not None:
             attn_output = self.subln(attn_output)
-        attn_output = attn_output * (1 - self.lambda_init)
+            attn_output = attn_output * (1 - self.lambda_init)
 
         attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
@@ -526,7 +526,7 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
         for layer in self.model.layers:
             if isinstance(layer.self_attn, LlamaLoraDiffAttention):
                 layer.self_attn.init_diff_attn_lora()
-        print(f"Initialized diff attn weights for layer(s) {config.layers_to_transform}")
+        print(f"Initialized diff attn weights for layer(s) {set(list(range(config.num_hidden_layers))).intersection(set(config.layers_to_transform))}")
 
         # freeze all params (except attention)
         for _, param in self.named_parameters():
@@ -591,6 +591,10 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
         Load base model and then load the custom model on top of it
         """
         config = LlamaLoraDiffTransformerConfig.from_pretrained(pretrained_model_name_or_path)
+        if "attn_implementation" in kwargs and kwargs["attn_implementation"] != config.diff_attn_implementation:
+            print(f"WARNING: you are loading a model with attention implementation = {kwargs['attn_implementation']} which is different than the one in the model config = {config.diff_attn_implementation}.")
+            config.diff_attn_implementation = kwargs["attn_implementation"]
+
         base_model_path = config._name_or_path # something like meta-llama/Meta-Llama-3-8B-Instruct
 
         print("=============== YOU CAN SAFELY IGNORE THE MISSING KEYS WARNING BELOW ===============")
