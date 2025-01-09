@@ -641,7 +641,12 @@ class LlamaLoraDiffTransformerForCausalLM(LlamaForCausalLM, GenerationMixin):
         print("=============== YOU CAN SAFELY IGNORE THE MISSING KEYS WARNING ABOVE ===============")
 
         # Now we load the adapters. Load all the model.safetensors files TODO: cleaner with cases if multiple shards
-        adapters_state_dict = load_file(f"{pretrained_model_name_or_path}/model.safetensors")
+        if os.path.exists(f"{pretrained_model_name_or_path}/model.safetensors"):
+            adapters_state_dict = load_file(f"{pretrained_model_name_or_path}/model.safetensors")
+        elif os.path.exists(f"{pretrained_model_name_or_path}/pytorch_model.bin"):
+            adapters_state_dict = torch.load(f"{pretrained_model_name_or_path}/pytorch_model.bin")
+        else:
+            assert False, 'Cannot load adapters...'
         model.load_diff_attn_weights(adapters_state_dict)
         return model
     
