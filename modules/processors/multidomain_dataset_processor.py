@@ -23,7 +23,7 @@ class BIOASQ12B(Processor):
     """
 
     def __init__(self, hf_path: str = None, train_zip_path: str = None, dev_zip_path: str = None, *args, **kwargs):
-        assert (hf_path is not None and (train_zip_path is None and dev_zip_path is None)) or (hf_path is None and (train_zip_path is not None and dev_zip_path is not None)), "Please either either provide raw file paths ```train_zip_path``` and ```dev_zip_path``` or a processed dataset HuggingFace path ```hf_path```. To download the raw files, see http://participants-area.bioasq.org/datasets/"
+        assert (hf_path is not None and (train_zip_path is None and dev_zip_path is None)) or (hf_path is None and (train_zip_path is not None and dev_zip_path is not None)), "Please either provide raw file paths ```train_zip_path``` and ```dev_zip_path``` or a processed dataset HuggingFace path ```hf_path```. To download the raw files, see http://participants-area.bioasq.org/datasets/"
         self.dataset_name = 'BIOASQ12B'
         self.hf_path = hf_path
         self.train_zip_path = train_zip_path
@@ -55,7 +55,7 @@ class BIOASQ12B(Processor):
                 data = dev_data
             
             import itertools
-            dataset = {"id": [], "content": [], "label": [], "type": []}
+            dataset = {"id": [], "content": [], "label": [], "type": [], "label_originalformat": []}
             for row in data:
 
                 # parse labels
@@ -69,6 +69,7 @@ class BIOASQ12B(Processor):
                         continue
                 elif row['type'] == 'list':
                     assert isinstance(row['exact_answer'], list) and isinstance(row['exact_answer'][0], list), f"unexpected parsing label for {row['id']}: {row['exact_answer']}"
+                    assert row['exact_answer'] is not None
                     # put all combinations of needed answers x synonyms
                     labels = [', '.join(combination) for combination in list(itertools.product(*row['exact_answer']))]
                     if len(labels) > 1000:
@@ -94,6 +95,7 @@ class BIOASQ12B(Processor):
                 dataset["id"].append(row["id"])
                 dataset["content"].append(row["body"])
                 dataset["type"].append(row["type"])
+                dataset["label_originalformat"].append([['none']] if row['type'] != 'list' else row['exact_answer'])
 
             assert len(dataset["id"]) == len(dataset["content"]) == len(dataset["label"]), "id content and labels lengths are not the same"
             dataset = datasets.Dataset.from_dict(dataset)
@@ -977,6 +979,6 @@ class MultiQA_distill_mistral7B(Processor):
     def process(self):
         with open(self.path, 'r') as f:
             data = json.load(f)
-            all_data = [{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "instruction": d["instruction"], "true_label":d["label"]} for d in data]
+            all_data = [{"id": d["q_id"], "content": d["question"], "label": [d["response"]], "true_label":d["label"]} for d in data]
         dataset = datasets.Dataset.from_pandas(pd.DataFrame(all_data))
         return dataset

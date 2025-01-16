@@ -12,7 +12,7 @@ pd.set_option("display.precision", 4)
 
 class Evaluate:
     @staticmethod
-    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_att: bool=False, llm_ll: bool=False, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
+    def eval(experiment_folder="experiments/", split="dev", bem: bool=False, llm: list[str]=None, llm_ollama: list[str]=None, vllm: list[str]=None, gpt: bool=None, bem_batch_size: int=1, lid: bool=None, lid_advanced: bool=None, llm_att: bool=False, bioasq: bool=False, llm_ll: bool=False, llm_batch_size: int=None, llm_prompt: str = "default_qa", ollama_url: str=None, folder: str=None, force: bool=False, samples: int=-1):
         def eval_single(experiment_folder, folder, split: str, model, metric_name: str, nb_samples: int =-1):
             if folder is not None:
                 folders = [folder]
@@ -45,7 +45,9 @@ class Evaluate:
                     
                     predictions = data['response'].values
                     references = data['label'].values
-                    questions = data['question'].values    
+                    questions = data['question'].values 
+                    if metric_name == "bioasq":
+                        questions = data['q_id'].values   
                 
                     if gpt is not None:
                         # openai costs
@@ -67,7 +69,6 @@ class Evaluate:
 
                         for k in range(len(scores)):
                             data[k] = scores[k]
-                            print("data", data)
                         pass
                         
                         # Efficiently add scores to the DataFrame
@@ -172,7 +173,6 @@ class Evaluate:
                     try:
                         generator['init_args']['_target_'] = generator['init_args']['_target_'].replace('vllm', 'llm')
                         generator['init_args']['model_name'] = generator['init_args']['model_name'].replace('tmp_', '')
-                        
                         model = LLM_att(generator, prompt)   
 
                         model_name = config['generator']['init_args']['model_name']
@@ -258,6 +258,17 @@ class Evaluate:
         #             print(f"{folder} doesn't have eval_{split}_out.json")
         #             continue
 
+        if bioasq is not None:
+            from models.evaluators.bioasq_metrics import BioASQMetrics
+            if folder is None:
+                folders = [ f.path for f in os.scandir(experiment_folder) if f.is_dir() and 'tmp_' not in f.path]
+            else:
+                folders = [folder]
+            short_name = "bioasq"
+            model = BioASQMetrics(split=split)
+            for folder in folders:
+                eval_single(experiment_folder, folder, split, model, short_name, nb_samples = samples)
+
 
 if __name__ == "__main__":
     import argparse
@@ -272,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument('--lid_advanced', action='store_true', default=None)
     parser.add_argument('--llm_att', action='store_true', default=None, help="Compute attention-based metrics")
     parser.add_argument('--llm_ll', action='store_true', default=None, help="Compute ll metrics")
+    parser.add_argument('--bioasq', action='store_true', default=None, help="Compute bioasq metrics")
 
 
     parser.add_argument('--llm', type=str, nargs='*', default=None, 
@@ -311,6 +323,7 @@ if __name__ == "__main__":
         # ragchecker=args.ragchecker,
         lid=args.lid,
         lid_advanced=args.lid_advanced,
+        bioasq=args.bioasq,
         bem_batch_size=args.bem_batch_size,
         llm_batch_size=args.llm_batch_size,
         llm_prompt=args.llm_prompt,

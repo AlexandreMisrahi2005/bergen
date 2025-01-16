@@ -207,7 +207,7 @@ class Retrieve:
     @staticmethod
     def add_distractor_docs(doc_ids, k, generation_top_k, all_doc_ids=None, distract_with_bad_topk=False, scores=None):
         """
-        Replace k randomly-sampled retrieved document ids with k distractors
+        Replace least k relevant retrieved document ids with k distractors
         Should not be used in combination with re-ranking (because we truncate to generation_top_k in this function)
         Args:
             doc_ids: List, with shape (number of queries, number of retrieved docs per query)

@@ -116,6 +116,8 @@ class RAG:
         assert self.generation_top_k <= self.rerank_top_k <= self.retrieve_top_k
         assert self.train_with_k_distractors <= self.generation_top_k
         assert 0 <= self.train_P_fraction_distractors <= 1
+        if self.train_with_k_distractors > 0 and reranker is not None:
+            raise NotImplementedError("Train with distractors with reranker is not implemented")
         # init experiment (set run name, create dirs)
         self.run_name, self.experiment_folder = init_experiment(config, experiments_folder, index_folder, runs_folder, run_name, overwrite_exp=self.overwrite_exp, continue_batch=continue_batch)
         # process datasets, downloading, loading, covert to format
@@ -181,6 +183,7 @@ class RAG:
                     doc_dataset_name,
                     dataset_split, 
                     self.retrieve_top_k,
+                    train_with_k_distractors=self.train_with_k_distractors,
                     )  
         else:
             query_ids, doc_ids = None, None
@@ -296,7 +299,7 @@ class RAG:
             else:
                 query_ids, doc_ids, scores = load_trec(ranking_file_no_distractors)
             if train_with_k_distractors > 0:
-                print("Adding distractors to retrieval...")
+                print(f"Adding {train_with_k_distractors} distractors to retrieval...")
                 doc_ids, scores = self.retriever.add_distractor_docs(
                     doc_ids, 
                     self.train_with_k_distractors, 
@@ -455,14 +458,15 @@ class RAG:
             ranking_labels
         )
 
-        print_generate_out(
-            questions,
-            instructions,
-            predictions,
-            query_ids, 
-            references,
-            ranking_labels,
-            )
+        if query_dataset_name not in ['nih_v1_long_context_query', 'nih_v1_long_context_multi_needle_query']:
+            print_generate_out(
+                questions,
+                instructions,
+                predictions,
+                query_ids, 
+                references,
+                ranking_labels,
+                )
 
         
         if hasattr(self.generator,"total_cost"):
@@ -519,6 +523,7 @@ class RAG:
             )
         
         # if no retriever don't load doc embeddings
+        docs_distractors_memory = None
         if self.retriever is not None:
             query_ids, doc_ids, _ = self.retrieve(
                 dataset, 
@@ -575,8 +580,8 @@ class RAG:
             multi_doc=True, 
             )
         
-        if self.train_with_k_distractors > 0:
-            print_prepared_distracted_dataset_examples(gen_dataset, docs_distractors_memory)
+        # if self.train_with_k_distractors > 0:
+        print_prepared_distracted_dataset_examples(gen_dataset, docs_distractors_memory)
 
         # context processing if needed
         if self.context_processor is not None and self.retriever is not None:
@@ -641,13 +646,6 @@ class RAG:
             # get adapter
             self.generator.model = get_peft_model(self.generator.model, lora_config)
             print("Model after inputting loradapters: \n", self.generator.model)
-            try:
-                from models.generators.llm_diff_transformer import LLMDiffTransformer
-            except ImportError:
-                print("LLMDiffTransformer not found after LoRA init. May lead to unexpected training behavior.")
-            if isinstance(self.generator, LLMDiffTransformer):
-                # reactivate the parameters because peft freezes everything from the base model
-                self.generator.model.unfreeze_adapters()
             self.generator.model.print_trainable_parameters()
             self.generator.model = self.generator.model.bfloat16()
 

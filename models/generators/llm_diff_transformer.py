@@ -62,7 +62,11 @@ class LLMDiffTransformer(BaseLLM):
                 raise NotImplementedError("Quantization not implemented for Diff Transformer.")
                 # TODO: add/test quantization cases
             else:
-                self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, torch_dtype=torch.bfloat16, device_map='auto')
+                if 'IFT' in self.model_name:
+                    # for some reason transformers doesnt like device_map='auto' with open-instruct checkpoints
+                    self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, ignore_mismatched_sizes=True, attn_implementation=attn_implementation, torch_dtype=torch.bfloat16).bfloat16().to('cuda')
+                else:
+                    self.model = LlamaLoraDiffTransformerForCausalLM.from_pretrained(pretrained_model_name_or_path=self.model_name, attn_implementation=attn_implementation, torch_dtype=torch.bfloat16, device_map='auto')
                 print(self.model)
 
         elif base_model_name is not None: # otherwise we initialize the model and possibly load the base model weights

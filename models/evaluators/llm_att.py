@@ -18,243 +18,58 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-def plot_attention_map_with_bars(attentions, input_ids, prompt_len, tokenizer, save_path="figs/attention_map.html"):
-    """
-    Plots an attention map and a bar chart for average attention weights using Plotly.
+from models.generators.DiffTransformer.llama_lora_diff_transformer_model import LlamaLoraDiffTransformerForCausalLM
 
-    Parameters:
-    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
-    - input_ids (list[int]): List of token IDs for the input sequence.
-    - prompt_len (int): Length of the prompt tokens.
-    - tokenizer: The tokenizer to decode token IDs into strings.
-    - save_path (str): Path to save the generated plot (default: "attention_map_with_bars.html").
-    """
-    # Slice the attention matrix: attentions from generated tokens to prompt tokens
-    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
-
-    # Decode token IDs into strings
-    tokens = tokenizer.convert_ids_to_tokens(input_ids)
-    prompt_tokens = tokens[:prompt_len]
-    generated_tokens = tokens[prompt_len:]
-    print("prompt tokens: ", prompt_tokens)
-    print("generated tokens: ", generated_tokens)
-
-    # Convert data into a DataFrame for Plotly
-    df = pd.DataFrame(
-        sliced_attentions,
-        index=[t for t in generated_tokens],  # Add "Gen" prefix for clarity
-        columns=[t for t in prompt_tokens]  # Add "Prompt" prefix for clarity
-    )
-    print(f"Sliced attentions shape: {sliced_attentions.shape}")
-    print(f"Prompt tokens: {len(prompt_tokens)}")
-    print(f"Generated tokens: {len(generated_tokens)}")
-    print(df.head())
-
-    # Compute average attention over generated tokens
-    avg_attention = df.mean(axis=0)  # Average along generated tokens axis
-
-    # Create a subplot layout
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=(
-            "Attention Map: Generated Tokens → Prompt Tokens",
-            "Attn map, Averaged over the generated tokens"
-        ),
-        vertical_spacing=0.3
-    )
-
-    # Add the heatmap (attention map)
-    fig.add_trace(
-        go.Heatmap(
-            z=df.values,
-            x=df.columns,
-            y=df.index,
-            colorscale="Viridis",
-            colorbar=dict(title="Attention Weight")
-        ),
-        row=1, col=1
-    )
-
-    # Add the bar chart (average attention weights)
-    fig.add_trace(
-        go.Bar(
-            x=df.columns,
-            y=avg_attention.values,
-            marker=dict(color="blue")
-        ),
-        row=2, col=1
-    )
-
-    # Update layout for the figure
-    fig.update_layout(
-        height=800,  # Adjust the height of the figure
-        title="Attention Map and Average Attention Weights",
-        xaxis=dict(title="Prompt Tokens", tickangle=45),
-        xaxis2=dict(title="Prompt Tokens", tickangle=45),  # Separate x-axis for the bar chart
-        yaxis=dict(title="Generated Tokens"),
-        yaxis2=dict(title="Average Attention Weight"),
-        font=dict(size=10)
-    )
-
-    # Save the figure as an HTML file
-    fig.write_html(save_path)
-    print(f"Attention map and bar chart saved to {save_path}")
-
-    return fig
-
-def plot_normalized_attention_bars(attentions, input_ids, prompt_len, tokenizer, magic_start, magic_end, query_start, query_end, save_path="figs/attention_bars.html"):
-    """
-    Plots a bar chart for average normalized attention weights using Plotly.
-
-    Parameters:
-    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
-    - input_ids (list[int]): List of token IDs for the input sequence.
-    - prompt_len (int): Length of the prompt tokens.
-    - tokenizer: The tokenizer to decode token IDs into strings.
-    - magic_start (int): Start index for the MAGIC NUMBER group in the prompt tokens.
-    - magic_end (int): End index for the MAGIC NUMBER group in the prompt tokens.
-    - query_start (int): Start index for the QUERY group.
-    - query_end (int): End index for the QUERY group.
-    - save_path (str): Path to save the generated plot (default: "attention_map.html").
-    """
-    assert len(attentions) == len(input_ids), f"Attention matrix and input IDs have different lengths: {len(attentions)} vs {len(input_ids)}"
-    # Slice the attention matrix: attentions from generated tokens to prompt tokens
-    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
-
-    # Decode token IDs into strings
-    tokens = tokenizer.convert_ids_to_tokens(input_ids)
-    prompt_tokens = tokens[:prompt_len]
-    generated_tokens = tokens[prompt_len:]
-
-    # Group the attention scores
-    context_1_attention = sliced_attentions[:, :magic_start].sum(axis=1)
-    magic_attention = sliced_attentions[:, magic_start:magic_end].sum(axis=1)
-    context_2_attention = sliced_attentions[:, magic_end:query_start].sum(axis=1)
-    query_attention = sliced_attentions[:, query_start:query_end].sum(axis=1)
-
-    # Combine grouped attentions into a new array
-    grouped_attentions = np.stack(
-        [context_1_attention, magic_attention, context_2_attention, query_attention], axis=1
-    )
-
-    # Define grouped prompt tokens
-    grouped_tokens = ["CONTEXT 1", "MAGIC NUMBER", "CONTEXT 2", "QUERY"]
-
-    grouped_df = pd.DataFrame(
-        grouped_attentions,
-        index=generated_tokens,
-        columns=grouped_tokens
-    )
-
-    # Compute average attention over generated tokens and normalize
-    avg_attention = grouped_df.mean(axis=0)
-    total_attention = avg_attention.sum()
-    normalized_attention = avg_attention / total_attention
-
-    # Create a single bar chart
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Bar(
-            x=normalized_attention.index,
-            y=normalized_attention.values,
-            marker=dict(color="blue"),
-            name="Normalized Attention"
-        )
-    )
-
-    # Annotate the sum of attention scores on the plot
-    fig.add_annotation(
-        x=0.5, y=0.9,
-        xref="paper", yref="paper",
-        text=f"Total Attention: {total_attention:.4f}",
-        showarrow=False,
-        font=dict(size=14, color="black"),
-        align="center",
-        bgcolor="lightyellow",
-        bordercolor="black"
-    )
-
-    # Update layout for the figure
-    fig.update_layout(
-        height=600,
-        title="Normalized Attention Weights with grouped tokens",
-        xaxis=dict(title="Prompt Tokens", tickangle=45),
-        yaxis=dict(title="Normalized Attention"),
-        font=dict(size=10)
-    )
-
-    # Save the figure as an HTML file
-    fig.write_html(save_path)
-    print(f"Normalized attention bar chart saved to {save_path}")
-
-    return fig
-
-def plot_attention_with_and_without_groups(
+def plot_combined_attention(
     attentions, input_ids, prompt_len, tokenizer,
     magic_start, magic_end, query_start, query_end,
-    save_path="figs/normalized_attention_maps.html"
+    save_path="figs/combined_attention_map.html"
 ):
     """
-    Plots two bar charts for normalized attention weights:
-    1. Individual token attention.
-    2. Grouped token attention.
+    Plots a single bar chart for combined normalized attention weights.
 
     Parameters:
-    - attentions (torch.Tensor): The attention matrix of shape (seq_len, seq_len).
-    - input_ids (list[int]): List of token IDs for the input sequence.
-    - prompt_len (int): Length of the prompt tokens.
-    - tokenizer: The tokenizer to decode token IDs into strings.
-    - magic_start (int): Start index for the MAGIC NUMBER group.
-    - magic_end (int): End index for the MAGIC NUMBER group.
-    - query_start (int): Start index for the QUERY group.
-    - query_end (int): End index for the QUERY group.
-    - save_path (str): Path to save the generated plot (default: "attention_map.html").
+    - attentions: Full attention matrix (no positive/negative decomposition).
+    - input_ids: Token IDs.
+    - prompt_len: Length of the prompt tokens.
+    - tokenizer: Tokenizer for decoding.
+    - magic_start, magic_end, query_start, query_end: Grouping positions.
+    - save_path: Path to save the plot.
     """
-    # Slice the attention matrix: attentions from generated tokens to prompt tokens
-    sliced_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+    # Slice the attention matrix
+    sliced_combined_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
 
-    # Decode token IDs into strings
+    # Decode tokens
     tokens = tokenizer.convert_ids_to_tokens(input_ids)
     prompt_tokens = tokens[:prompt_len]
     generated_tokens = tokens[prompt_len:]
 
-    # --- Plot 1: Individual Tokens ---
-    # Compute average attention and normalize
-    individual_df = pd.DataFrame(
-        sliced_attentions,
+    # --- Individual Token Attention ---
+    # DataFrame for individual attention
+    individual_combined_df = pd.DataFrame(
+        sliced_combined_attentions,
         index=generated_tokens,
         columns=prompt_tokens
     )
-    individual_avg_attention = individual_df.mean(axis=0)
-    individual_total_attention = individual_avg_attention.sum()
-    individual_normalized_attention = individual_avg_attention / individual_total_attention
+    individual_avg_combined_attention = individual_combined_df.mean(axis=0)
 
-    # --- Plot 2: Grouped Tokens ---
-    # Group the attention scores
-    bos_attention = sliced_attentions[:, :1].sum(axis=1)
-    context_1_attention = sliced_attentions[:, 1:magic_start].sum(axis=1)
-    magic_attention = sliced_attentions[:, magic_start:magic_end].sum(axis=1)
-    context_2_attention = sliced_attentions[:, magic_end:query_start].sum(axis=1)
-    query_attention = sliced_attentions[:, query_start:].sum(axis=1)
+    # --- Grouped Token Attention ---
+    def compute_grouped_attention(sliced_attention):
+        """Helper to compute grouped attention scores."""
+        bos_attention = sliced_attention[:, :1].sum(axis=1)
+        context_1_attention = sliced_attention[:, 1:magic_start].sum(axis=1)
+        magic_attention = sliced_attention[:, magic_start:magic_end].sum(axis=1)
+        context_2_attention = sliced_attention[:, magic_end:query_start].sum(axis=1)
+        query_attention = sliced_attention[:, query_start:].sum(axis=1)
+        return np.stack([bos_attention, context_1_attention, magic_attention, context_2_attention, query_attention], axis=1)
 
-    # Combine grouped attentions into a new array
-    grouped_attentions = np.stack(
-        [bos_attention, context_1_attention, magic_attention, context_2_attention, query_attention], axis=1
-    )
+    grouped_combined_attentions = compute_grouped_attention(sliced_combined_attentions)
 
-    # Define grouped prompt tokens
-    grouped_tokens = ["BOS", "CONTEXT 1", "<b>MAGIC NUMBER</b>", "CONTEXT 2", "QUERY"]
+    grouped_tokens = ["BOS", "CONTEXT 1", "MAGIC NUMBER", "CONTEXT 2", "QUERY"]
 
-    # Create a DataFrame for the grouped attention scores
-    grouped_df = pd.DataFrame(
-        grouped_attentions,
-        index=generated_tokens,
-        columns=grouped_tokens
-    )
-    grouped_avg_attention = grouped_df.mean(axis=0)
-    grouped_total_attention = grouped_avg_attention.sum()
-    grouped_normalized_attention = grouped_avg_attention / grouped_total_attention
+    # DataFrame for grouped attention
+    grouped_combined_df = pd.DataFrame(grouped_combined_attentions, index=generated_tokens, columns=grouped_tokens)
+    grouped_avg_combined_attention = grouped_combined_df.mean(axis=0)
 
     # --- Create Subplots ---
     fig = make_subplots(
@@ -269,10 +84,10 @@ def plot_attention_with_and_without_groups(
     # Add Plot 1: Individual Token Attention
     fig.add_trace(
         go.Bar(
-            x=individual_normalized_attention.index,
-            y=individual_normalized_attention.values,
+            x=prompt_tokens,
+            y=individual_avg_combined_attention.values,
             marker=dict(color="blue"),
-            name="Individual Tokens"
+            name="Individual Attention"
         ),
         row=1, col=1
     )
@@ -280,30 +95,20 @@ def plot_attention_with_and_without_groups(
     # Add Plot 2: Grouped Token Attention
     fig.add_trace(
         go.Bar(
-            x=grouped_normalized_attention.index,
-            y=grouped_normalized_attention.values,
-            marker=dict(color="green"),
-            name="Grouped Tokens"
+            x=grouped_tokens,
+            y=grouped_avg_combined_attention.values,
+            marker=dict(color="purple"),
+            name="Grouped Attention"
         ),
         row=2, col=1
     )
 
-    # Annotate total attention values
-    fig.add_annotation(
-        x=0.5, y=0.95,
-        xref="paper", yref="paper",
-        text=f"Total Attention (Individual Tokens): {individual_total_attention:.4f}",
-        showarrow=False,
-        font=dict(size=12, color="black"),
-        align="center",
-        bgcolor="lightyellow",
-        bordercolor="black"
-    )
-
+    # Annotate total combined attention values on the grouped plot
+    total_combined_attention = grouped_avg_combined_attention.sum()
     fig.add_annotation(
         x=0.5, y=0.3,
         xref="paper", yref="paper",
-        text=f"Total Attention (Grouped Tokens): {grouped_total_attention:.4f}",
+        text=f"Total Combined Attention: {total_combined_attention:.4f}",
         showarrow=False,
         font=dict(size=12, color="black"),
         align="center",
@@ -314,33 +119,189 @@ def plot_attention_with_and_without_groups(
     # Update layout
     fig.update_layout(
         height=1000,
-        title="Attention Analysis: Individual vs Grouped Tokens",
-        xaxis=dict(title="Prompt Tokens (Individual)", tickangle=45),
+        title="Attention Analysis: Detailed vs Grouped Tokens",
+        xaxis=dict(title="Prompt Tokens (Detailed)", tickangle=45),
         xaxis2=dict(title="Prompt Tokens (Grouped)", tickangle=45),
         yaxis=dict(title="Normalized Attention"),
         yaxis2=dict(title="Normalized Attention"),
         font=dict(size=10)
     )
 
-    # add values on top of bars on the second plot
-    for i, val in enumerate(grouped_normalized_attention.values):
-        fig.add_annotation(
-            x=i,
-            y=val,
-            text=f"{val:.4f}",
-            showarrow=False,
-            font=dict(size=10, color="black"),
-            align="center",
-            xref="x2",
-            yref="y2",
-            yshift=10
-        )
-        
     # Save the figure as an HTML file
-    fig.write_html(save_path)
-    print(f"Attention analysis with individual and grouped tokens saved to {save_path}")
+    # fig.write_html(save_path)
+    fig.write_image(save_path, format='png')
+    print(f"Combined attention analysis saved to {save_path}")
 
     return fig
+
+def plot_pos_neg_attention_with_and_without_groups(
+    attentions, input_ids, prompt_len, tokenizer,
+    magic_start, magic_end, query_start, query_end,
+    pos_attentions=None, neg_attentions=None,
+    save_path="figs/normalized_attention_maps.html"
+):
+    """
+    Plots three bar charts for normalized attention weights:
+    1. Individual token attention with positive/negative decomposition.
+    2. Grouped token attention with positive/negative decomposition.
+    3. Combined attention for grouped tokens.
+    """
+
+    if pos_attentions is None and neg_attentions is None:
+        return plot_combined_attention(
+            attentions, input_ids, prompt_len, tokenizer,
+            magic_start, magic_end, query_start, query_end,
+            save_path=save_path
+        )
+    else:
+        # Slice the attention matrix
+        sliced_pos_attentions = pos_attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+        sliced_neg_attentions = neg_attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+        sliced_combined_attentions = attentions[prompt_len:, :prompt_len].cpu().float().numpy()
+
+        # Decode tokens
+        tokens = tokenizer.convert_ids_to_tokens(input_ids)
+        prompt_tokens = tokens[:prompt_len]
+        generated_tokens = tokens[prompt_len:]
+
+        # --- Individual Token Attention ---
+        individual_pos_df = pd.DataFrame(sliced_pos_attentions, index=generated_tokens, columns=prompt_tokens)
+        individual_neg_df = pd.DataFrame(sliced_neg_attentions, index=generated_tokens, columns=prompt_tokens)
+        individual_combined_df = pd.DataFrame(sliced_combined_attentions, index=generated_tokens, columns=prompt_tokens)
+
+        individual_avg_pos_attention = individual_pos_df.mean(axis=0)
+        individual_avg_neg_attention = individual_neg_df.mean(axis=0)
+        individual_avg_combined_attention = individual_combined_df.mean(axis=0)
+
+        # --- Grouped Token Attention ---
+        def compute_grouped_attention(sliced_attention):
+            """Helper to compute grouped attention scores."""
+            bos_attention = sliced_attention[:, :1].sum(axis=1)
+            context_1_attention = sliced_attention[:, 1:magic_start].sum(axis=1)
+            magic_attention = sliced_attention[:, magic_start:magic_end].sum(axis=1)
+            context_2_attention = sliced_attention[:, magic_end:query_start].sum(axis=1)
+            query_attention = sliced_attention[:, query_start:].sum(axis=1)
+            return np.stack([bos_attention, context_1_attention, magic_attention, context_2_attention, query_attention], axis=1)
+
+        grouped_pos_attentions = compute_grouped_attention(sliced_pos_attentions)
+        grouped_neg_attentions = compute_grouped_attention(sliced_neg_attentions)
+        grouped_combined_attentions = compute_grouped_attention(sliced_combined_attentions)
+
+        grouped_tokens = ["BOS", "CONTEXT 1", "MAGIC NUMBER", "CONTEXT 2", "QUERY"]
+
+        grouped_pos_df = pd.DataFrame(grouped_pos_attentions, index=generated_tokens, columns=grouped_tokens)
+        grouped_neg_df = pd.DataFrame(grouped_neg_attentions, index=generated_tokens, columns=grouped_tokens)
+        grouped_combined_df = pd.DataFrame(grouped_combined_attentions, index=generated_tokens, columns=grouped_tokens)
+
+        grouped_avg_pos_attention = grouped_pos_df.mean(axis=0)
+        grouped_avg_neg_attention = grouped_neg_df.mean(axis=0)
+        grouped_avg_combined_attention = grouped_combined_df.mean(axis=0)
+
+        # --- Create Subplots ---
+        fig = make_subplots(
+            rows=3, cols=1,
+            subplot_titles=[
+                "Normalized Attention for Individual Tokens (Positive/Negative)",
+                "Normalized Attention for Grouped Tokens (Positive/Negative)",
+                "Normalized Combined Attention for Grouped Tokens"
+            ],
+            vertical_spacing=0.2,
+        )
+
+        # Plot 1: Individual Token Attention
+        fig.add_trace(
+            go.Bar(
+                x=prompt_tokens,
+                y=individual_avg_pos_attention.values,
+                marker=dict(color="blue"),
+                name="Positive Attention (Individual)"
+            ),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Bar(
+                x=prompt_tokens,
+                y=-individual_avg_neg_attention.values,
+                marker=dict(color="red"),
+                name="Negative Attention (Individual)"
+            ),
+            row=1, col=1
+        )
+
+        # Plot 2: Grouped Token Attention
+        fig.add_trace(
+            go.Bar(
+                x=grouped_tokens,
+                y=grouped_avg_pos_attention.values,
+                marker=dict(color="green"),
+                name="Positive Attention (Grouped)"
+            ),
+            row=2, col=1
+        )
+        fig.add_trace(
+            go.Bar(
+                x=grouped_tokens,
+                y=-grouped_avg_neg_attention.values,
+                marker=dict(color="orange"),
+                name="Negative Attention (Grouped)"
+            ),
+            row=2, col=1
+        )
+
+        # Plot 3: Combined Attention for Grouped Tokens
+        fig.add_trace(
+            go.Bar(
+                x=grouped_tokens,
+                y=grouped_avg_combined_attention.values,
+                marker=dict(color="purple"),
+                name="Combined Attention (Grouped)"
+            ),
+            row=3, col=1
+        )
+
+        # Annotate total attention values (on the third plot)
+        total_combined_attention = grouped_avg_combined_attention.sum()
+        fig.add_annotation(
+            x=0.5, y=0.2,
+            xref="paper", yref="paper",
+            text=f"Total Positive Attention: {grouped_avg_pos_attention.sum():.4f}",
+            showarrow=False,
+            font=dict(size=12, color="black"),
+            align="center",
+            bgcolor="lightyellow",
+            bordercolor="black"
+        )
+        fig.add_annotation(
+            x=0.5, y=0.15,
+            xref="paper", yref="paper",
+            text=f"Total Negative Attention: {grouped_avg_neg_attention.sum():.4f}",
+            showarrow=False,
+            font=dict(size=12, color="black"),
+            align="center",
+            bgcolor="lightyellow",
+            bordercolor="black"
+        )
+
+        # Update layout
+        fig.update_layout(
+            height=1200,
+            title="Attention Analysis: Positive, Negative, and Combined (Grouped Tokens)",
+            barmode="relative",  # Relative stacking for positive and negative
+            xaxis=dict(title="Prompt Tokens (Individual)", tickangle=45),
+            xaxis2=dict(title="Prompt Tokens (Grouped)", tickangle=45),
+            xaxis3=dict(title="Prompt Tokens (Grouped)", tickangle=45),
+            yaxis=dict(title="Normalized Attention"),
+            yaxis2=dict(title="Normalized Attention"),
+            yaxis3=dict(title="Normalized Attention"),
+            font=dict(size=10)
+        )
+
+        # Save the figure as an HTML file
+        # fig.write_html(save_path)
+        fig.write_image(save_path, format='png')
+        # print(f"Attention analysis saved to {save_path}")
+
+        return fig
 
 
 class LLM_att():
@@ -512,47 +473,7 @@ class LLM_att():
             gen_len, prefix_len = attention.shape
             cov = torch.sum(torch.sum(attention, axis=0)**2)
             return cov
-        #i=0
-        #batch_input_ids = instr_tokenized['input_ids'][i:i+self.llm.batch_size].to('cuda')
-        #batch_attention_masks = instr_tokenized['attention_mask'][i:i+self.llm.batch_size].to('cuda')
-        #instr_batch = instrs[i:i+self.llm.batch_size]
-        #gen = self.llm.model.model.generate(input_ids=batch_input_ids, attention_mask=batch_attention_masks, do_sample=False, output_attentions=True, return_dict_in_generate=True)
 
-        """
-        def compute_att_variability(attentions):
-            x = torch.div(torch.transpose(atts, 1,0), torch.sum(atts, axis=1))            
-            ent 
-        #output_ids = self.model.generate(**instr_tokenized.to('cuda'), max_new_tokens=self.max_new_tokens, max_length = self.max_length, do_sample=False)
-        output = self.model.generate(**instr_tokenized.to('cuda'), max_new_tokens=self.max_new_tokens, max_length = self.max_length, do_sample=False,output_attentions=True, return_dict_in_generate=True)
-        output_ids = output['sequences']
-        full_attentions = output['attentions']
-        prompt_toks = [self.tokenizer.decode(i) for  i in instr_tokenized['input_ids'][0]]        
-        prompt_len = instr_tokenized.input_ids.size(1)     
-        generated_ids = output_ids[:, prompt_len:]
-        gen_toks  = [self.tokenizer.decode(i) for  i in generated_ids[0]]
-        
-        layer=-1
-        nb_layers = len(full_attentions[0])
-        #avg across heads 
-        step = 3
-        fig, axs = plt.subplots(1, int(nb_layers/step)+1, figsize=(50,50))            
-        i = 0
-
-        for layer in range(0, nb_layers, step):
-            attentions = [torch.mean(att[layer], axis=1).squeeze(axis=1) for att in full_attentions]     
-            #TODO : renormalize attention on prompt (will not sum to 1 for more than prompt_len tokens)
-
-            prompt_to_gen_att = [attentions[j+1][0, :prompt_len] for j in range(generated_ids.shape[-1]-1)]
-            atts = torch.stack(prompt_to_gen_att).float().cpu().numpy()
-            df = pd.DataFrame(atts.transpose(), columns=gen_toks[1:], index=prompt_toks)
-            sns.heatmap(df, ax=axs[i], cmap="crest")
-            axs[i].set_title(f"Layer {layer}")
-            i = i+1
-        
-        plt.savefig(f'plot_{self.model_name.split("/")[-1].replace("-","_")}.png')
-        plt.clf()
-        decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        """
         assert len(predictions) == len(references) == len(questions) == len(instructions)
         examples = [{'question': questions[i], 'candidate': predictions[i], 'instruction': instructions[i]}  for i in range(len(predictions))]
         batch_size = self.llm.batch_size
@@ -566,15 +487,11 @@ class LLM_att():
         #for i in tqdm(range(0, len(examples)), desc=' Compute attention-based metrics'):
             # Extract batch
             batch_inputs, prompt_len, input_types, nih_output  = self.collate_fn(examples[j])
-            # print(examples[j])
-            # print("batch_inputs", batch_inputs)
-            # print("prompt_len", prompt_len)
-            # print("input_types", input_types)
-            #breakpoint()
+
             batch_input_ids = batch_inputs['input_ids'].to('cuda')
             batch_attention_masks = batch_inputs['attention_mask'].to('cuda')
-            #breakpoint()
-            output = self.llm.model.generate(input_ids=batch_input_ids, attention_mask=batch_attention_masks, max_new_tokens=1, do_sample=False, output_attentions=True, output_hidden_states=True, return_dict_in_generate=True)
+
+            output = self.llm.model.generate(input_ids=batch_input_ids, attention_mask=batch_attention_masks, max_new_tokens=1, do_sample=False, output_attentions=True, output_hidden_states=True, return_dict_in_generate=True, temperature=None, top_p=None)
             #hidden states: (batch_size, layers, [bsize, seq_len, hidden_size])
             sequences = output['sequences']
             generated_ids = sequences[:, prompt_len:-1]
@@ -587,6 +504,11 @@ class LLM_att():
                 attentions = output['attentions'][0][-1][0] # take attention from last layer
                 #avg across heads
                 attentions = torch.mean(attentions, axis=0).squeeze(axis=0)# for att in full_attentions[0]
+                pos_attentions, neg_attentions = None, None
+                if isinstance(self.llm.model, LlamaLoraDiffTransformerForCausalLM) and j == 0:
+                    # split attentions into pos and neg attentions
+                    attentions, pos_attentions, neg_attentions = attentions[0], attentions[1], attentions[2]
+                
                 # hidden_states = output['hidden_states'][0][layer-1][0]
                 if layer == -1:
                     layer = "last"
@@ -594,50 +516,21 @@ class LLM_att():
                 # prompt_hidden_states = hidden_states_norm[:prompt_len]
                 #gen_hidden_states = hidden_states_norm[prompt_len:]
                 #prompt_to_gen_att_mh = full_attentions[:, prompt_len:, :prompt_len]
-                # check the attentions matrix is symmetric
-                # print("attentions is symmetric? ", torch.allclose(attentions, attentions.T, atol=1e-8))
-                # print("attentions is upper triangular? ", torch.allclose(attentions, torch.triu(attentions), atol=1e-8))
-                # print("attentions is lower triangular? ", torch.allclose(attentions, torch.tril(attentions), atol=1e-8))
                 prompt_to_gen_att = attentions[prompt_len:, :prompt_len]
-                # print("prompt_to_gen_att.sum(axis=1)", prompt_to_gen_att.sum(axis=1))
-                # print("prompt_to_gen_att.shape", prompt_to_gen_att.shape)
-                # compute attention from start_nih to end_nih tokens
-                # print("start_nih", start_nih)
-                # print("end_nih", end_nih)
-                # print("query_start", query_start)
-                # print("query_end", query_end)
-                # print("prompt_len", prompt_len)
-                # compute attention to bos token
-                # prompt_to_gen_att_bos = attentions[prompt_len:, :1]
-                # # compute attention to instruction
-                # prompt_to_gen_instr = torch.cat([attentions[prompt_len:, 1:start_nih], attentions[prompt_len:, end_nih:query_start]], dim=1)
-                # # compute attention on magic phrase
+
                 prompt_to_gen_magic = attentions[prompt_len:, start_nih:end_nih]
                 att_by_cat["att_last_magic"] = torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy().item()
-                # # compute attention to query
-                # prompt_to_gen_query = attentions[prompt_len:, query_start:query_end]
-                # print shapes 
-                # print("prompt_to_gen_att_bos.shape", prompt_to_gen_att_bos.shape)
-                # print("prompt_to_gen_instr.shape", prompt_to_gen_instr.shape)
-                # print("prompt_to_gen_query.shape", prompt_to_gen_query.shape)
-                # print("attention on bos =", torch.mean(torch.sum(prompt_to_gen_att_bos, axis=1)).float().to('cpu').numpy())
-                # print("attention on instruction =", torch.mean(torch.sum(prompt_to_gen_instr, axis=1)).float().to('cpu').numpy())
-                # print("attention on magic phrase =", torch.mean(torch.sum(prompt_to_gen_magic, axis=1)).float().to('cpu').numpy())
-                # print("attention on query =", torch.mean(torch.sum(prompt_to_gen_query, axis=1)).float().to('cpu').numpy())
-                # check that the sum of attentions is 1
-                # print("sum of attention on bos =", torch.sum(prompt_to_gen_att_bos).float().to('cpu').numpy())
-                # print("sum of attention for each token generated after prompt on the prompt", torch.sum(prompt_to_gen_att, axis=1).float().to('cpu').numpy())
-                # print("sum of attention for each token generated after prompt", torch.sum(attentions[prompt_len:], axis=1).float().to('cpu').numpy())
+
                 assert batch_input_ids.shape[0] == 1
                 if j == 0:
-                    # plot_attention_map_with_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, save_path=f"figs/attention_map_{self.llm.model_name.replace('/', '_')}.{j}.html")
-                    # plot_normalized_attention_bars(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, start_nih, end_nih, query_start, query_end, save_path=f"figs/normalized_attention_bars_{self.llm.model_name.replace('/', '_')}.{j}.html")
-                    plot_attention_with_and_without_groups(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, start_nih, end_nih, query_start, query_end, save_path=f"figs/normalized_attention_maps_{self.llm.model_name.replace('/', '_')}.{j}.html")
+                    plot_pos_neg_attention_with_and_without_groups(attentions, batch_input_ids.squeeze(), prompt_len, self.llm.tokenizer, start_nih, end_nih, query_start, query_end, pos_attentions=pos_attentions, neg_attentions=neg_attentions, save_path=f"figs/split_grouped_normalized_attention_maps/{self.llm.model_name.replace('experiments/','').replace('/', '_')}_sample{j}.png")
             elif not nih_output:
                 print(f"WARNING: NIH output is None for example {j} \nreference={references[j]} \ninstruction={instructions[j]} ")
 
             for layer in layers:
-                attentions = output['attentions'][0][layer][0]                                        
+                attentions = output['attentions'][0][layer][0]  
+                if isinstance(self.llm.model, LlamaLoraDiffTransformerForCausalLM):
+                    attentions = attentions[0]                                      
                 #avg across heads
                 attentions = torch.mean(attentions, axis=0).squeeze(axis=0)# for att in full_attentions[0]
                 hidden_states = output['hidden_states'][0][layer-1][0]
@@ -695,7 +588,5 @@ class LLM_att():
             
         torch.cuda.empty_cache()
         d = {cat: np.mean([score[cat] for score in scores]) for cat in att_by_cat.keys()}
-        # print("d", d)
-        # print("scores", scores)
         return d, scores
 

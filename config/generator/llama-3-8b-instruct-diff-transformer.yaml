@@ -9,7 +9,7 @@ init_args:
   attn_implementation: null # this is the base model attention layers (will be overwritten if layers_to_transform contains all layers; unknown behavior otherwise)
   # Below are args required when loading a new diff attn model. When loading from a checkpoint, the config is automatically loaded.
   model_config:
-    attn_implementation: 'eager'           # this is the diff attention implementation: 'eager' and 'flash_attention_2' are supported
+    diff_attn_implementation: null           # this is the diff attention implementation: 'eager' and 'flash_attention_2' are supported
     learn_lambda: False                    # Whether to learn the lambda parameter for the Diff Attn loss. Takes precedence over diff_attn_lambda.
     diff_attn_lambda: 0.00                 # The fixed lambda parameter for the Diff Attn. Ignored if learn_lambda is True.
     layers_to_transform: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31] # List of layer indices to apply Diff Attn to.
@@ -23,4 +23,3 @@ init_args:
     groupnorm: True                        # Whether to use GroupNorm (normalization across attention heads) (see diff attn paper).
     relu_on_differential: False            # Whether to apply ReLU on the differential term i.e. ReLU(softmax(Q1K1)-softmax(Q2K2))
     verbose: True                          # essentially prints the model layers before runs
-    dev: False

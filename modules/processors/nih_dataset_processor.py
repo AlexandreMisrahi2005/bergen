@@ -21,6 +21,10 @@ class NIHDataset(Processor):
             d = datasets.load_dataset('naver/bergen_nih_v1',self.conf_name)[self.split]
         elif self.conf_name == 'hash':
             d = datasets.load_from_disk('nih_hash')[self.split]
+        elif self.conf_name == 'long_context':
+            d = datasets.load_from_disk('nih_long_context')[self.split]
+        elif self.conf_name == 'long_context_multi_needle':
+            d = datasets.load_from_disk('mnih_long_context')[self.split]
         else:
             raise ValueError('Invalid config_name: '+self.conf_name, ' || Valid values are: number, simple, multihop, hash')
         #oracle run data generations
@@ -39,14 +43,14 @@ class NIHDataset(Processor):
             dataset = dataset.rename_column("query", "content")
             dataset = dataset.remove_columns(['did', 'doc'])
             dataset = dataset.map(lambda x: {"label": [str(x["label"])]})
-            print('QUERY:',dataset[:10])
+            # print('QUERY:',dataset[:10])
             return dataset
         else:
             #document dataset
             dataset = d.rename_column("did", "id")
             dataset = dataset.rename_column("doc", "content")
             dataset = dataset.remove_columns(['qid', 'query','label'])
-            print(dataset[:10])
+            # print(dataset[:10])
             return dataset
 
 class NIHDatasetNumber(NIHDataset):
@@ -64,3 +68,11 @@ class NIHDatasetMultiHop(NIHDataset):
 class NIHDatasetHash(NIHDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs,config_name='hash')
+
+class NIHDatasetLongContext(NIHDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs,config_name='long_context')
+
+class MNIHDatasetLongContext(NIHDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs,config_name='long_context_multi_needle')
