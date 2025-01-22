@@ -116,8 +116,6 @@ class RAG:
         assert self.generation_top_k <= self.rerank_top_k <= self.retrieve_top_k
         assert self.train_with_k_distractors <= self.generation_top_k
         assert 0 <= self.train_P_fraction_distractors <= 1
-        if self.train_with_k_distractors > 0 and reranker is not None:
-            raise NotImplementedError("Train with distractors with reranker is not implemented")
         # init experiment (set run name, create dirs)
         self.run_name, self.experiment_folder = init_experiment(config, experiments_folder, index_folder, runs_folder, run_name, overwrite_exp=self.overwrite_exp, continue_batch=continue_batch)
         # process datasets, downloading, loading, covert to format
@@ -183,8 +181,8 @@ class RAG:
                     doc_dataset_name,
                     dataset_split, 
                     self.retrieve_top_k,
-                    train_with_k_distractors=self.train_with_k_distractors,
-                    )  
+                    train_with_k_distractors=self.train_with_k_distractors if self.reranker is None else 0,
+                    )
         else:
             query_ids, doc_ids = None, None
         # rerank
@@ -197,6 +195,7 @@ class RAG:
                 query_ids, 
                 doc_ids,
                 self.rerank_top_k,
+                train_with_k_distractors=self.train_with_k_distractors,
                 )
 
         # generate
@@ -255,7 +254,7 @@ class RAG:
                  train_with_k_distractors=0,
                  eval_ranking=False,
                  ):
-        
+
         ranking_file = get_ranking_filename(
             self.runs_folder,
             query_dataset_name,
@@ -338,7 +337,8 @@ class RAG:
                query_ids, 
                doc_ids, 
                rerank_top_k, 
-               return_embeddings=False
+               return_embeddings=False,
+               train_with_k_distractors=0,
                ):
         
         doc_ids = [doc_ids_q[:rerank_top_k] for doc_ids_q in doc_ids]
@@ -352,11 +352,12 @@ class RAG:
             self.retrieve_top_k,
             self.reranker.get_clean_model_name(),
             self.rerank_top_k,
-            self.query_generator.get_clean_model_name()
+            self.query_generator.get_clean_model_name(),
+            train_with_k_distractors=train_with_k_distractors, # used only if train_with_k_distractors > 0
+            generation_top_k=self.generation_top_k,            # used only if train_with_k_distractors > 0
         )
 
-        if not os.path.exists(reranking_file):
-            print(f'Run {reranking_file} does not exist, running rerank...')
+        if not os.path.exists(reranking_file) or self.overwrite_index:
             rerank_dataset = prepare_dataset_from_ids(
                     dataset, 
                     query_ids, 
@@ -364,9 +365,39 @@ class RAG:
                     multi_doc=False,
                     query_field="generated_query"
                 )
-            out_ranking = self.reranker.eval(rerank_dataset, return_embeddings=return_embeddings)
-            query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
-            write_trec(reranking_file, query_ids, doc_ids, scores)
+            reranking_file_no_distractors = get_reranking_filename(
+                    self.runs_folder,
+                    query_dataset_name,
+                    doc_dataset_name,
+                    dataset_split,
+                    self.retriever.get_clean_model_name(),
+                    self.retrieve_top_k,
+                    self.reranker.get_clean_model_name(),
+                    self.rerank_top_k,
+                    self.query_generator.get_clean_model_name(),
+                )
+            print(reranking_file_no_distractors)
+            if reranking_file_no_distractors == reranking_file or (not os.path.exists(reranking_file_no_distractors)) or self.overwrite_index:
+                print(f'Run {reranking_file} does not exist, running rerank...')
+                out_ranking = self.reranker.eval(rerank_dataset, return_embeddings=return_embeddings)
+                query_ids, doc_ids, scores = out_ranking['q_id'], out_ranking['doc_id'], out_ranking['score']
+                write_trec(reranking_file, query_ids, doc_ids, scores)
+            else:
+                if train_with_k_distractors > 0:
+                    print("loading pre-existing reranking file without distractors")
+                query_ids, doc_ids, scores = load_trec(reranking_file_no_distractors)
+            if train_with_k_distractors > 0:
+                print(f"Adding {train_with_k_distractors} distractors to reranked retrieval...")
+                doc_ids, scores = self.retriever.add_distractor_docs(
+                    doc_ids, 
+                    self.train_with_k_distractors, 
+                    self.generation_top_k,
+                    all_doc_ids=dataset['doc']['id'] if not self.distract_with_bad_topk else None,
+                    distract_with_bad_topk=self.distract_with_bad_topk,
+                    scores=scores,
+                    )
+                print(f"Saving reranked retrieval run to {reranking_file}")
+                write_trec(reranking_file, query_ids, doc_ids, scores)
         else:
             # copy reranking file to experiment folder 
             shutil.copyfile(reranking_file, f'{self.experiment_folder}/{reranking_file.split("/")[-1]}')
@@ -531,7 +562,7 @@ class RAG:
                 doc_dataset_name,
                 dataset_split, 
                 self.retrieve_top_k,
-                self.train_with_k_distractors,
+                train_with_k_distractors=self.train_with_k_distractors if self.reranker is None else 0,
                 eval_ranking=False
                 )
             docs_distractors_memory = None
@@ -567,6 +598,7 @@ class RAG:
                 query_ids,
                 doc_ids,
                 self.rerank_top_k,
+                train_with_k_distractors=self.train_with_k_distractors,
                 )
 
         # get top-k docs
@@ -600,19 +632,6 @@ class RAG:
         print("Preprocessing data...")
         train_test_datasets['train'] = Tokenized_Sorted_Dataset(train_test_datasets['train'], self.generator, training=True)
         train_test_datasets['test'] = Tokenized_Sorted_Dataset(train_test_datasets['test'], self.generator, training=True)
-        # print(len(train_test_datasets['train']), len(train_test_datasets['test']))
-        # print(train_test_datasets['train'][0])
-        # print([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))])
-        # print(len(train_test_datasets['train'].select([i for i in range(len(train_test_datasets['train']))][:int(len(train_test_datasets['train'])*0.99)])))
-        # import sys
-        # sys.exit()
-        # train_test_datasets['train'][0] == [(length, item, tokenized_input)]
-        # filter data for length > 99% of lengths
-        # if self.debug:
-        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
-        #     print('Filtering data for length > 99% of lengths')
-        #     train_test_datasets['train'] = train_test_datasets['train'][:int(len(train_test_datasets['train'])*0.99)]
-        #     print("max instr length =", max([train_test_datasets['train'][i]['tokenized_input']['input_ids'].size(1) for i in range(len(train_test_datasets['train']))]))
         
         # Switch back the model to 'train' mode:
         self.generator.model.train()
@@ -657,20 +676,6 @@ class RAG:
         logging_steps = max(total_steps // num_saving_steps, 1)
         print(f"Total steps: {total_steps}, eval steps: {eval_steps}, save steps: {save_steps}, logging steps: {logging_steps}")
 
-        # if self.debug:
-        #     accelerator = Accelerator()
-        #     print(accelerator.state)
-        #     print(accelerator.device)
-        #     print(accelerator.num_processes)
-        #     print(accelerator.distributed_type)
-        #     print(accelerator.local_process_index)
-        #     print(accelerator.local_process_index)
-        #     print(accelerator.local_device)
-        #     print(accelerator.global_process_index)
-        #     print(accelerator.global_device)
-        #     print(accelerator.is_main_process)
-        #     # self.generator.model, optimizer, lr_scheduler = accelerator.prepare(self.generator.model, self.training_config.optimizer, self.training_config.lr_scheduler)
-        #     self.generator.model, train_loader, eval_loader = accelerator.prepare(self.generator.model, train_test_datasets['train'], train_test_datasets['test'])
         args = TrainingArguments(
             run_name=self.run_name,
             output_dir=f'{self.experiment_folder}/train/',

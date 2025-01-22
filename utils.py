@@ -381,9 +381,13 @@ def get_index_path(index_folder, dataset_name, model_name, query_or_doc, dataset
     query_gen_add = "" if query_generator_name == "copy" or query_or_doc=="doc" else f".{query_generator_name}"
     return os.path.join(index_folder,f'{dataset_name}_{dataset_split}{query_or_doc}_{model_name}{query_gen_add}')
 
-def get_reranking_filename(runs_folder, query_dataset, doc_dataset, dataset_split, retriever_name, retrieve_top_k, reranker_name, rerank_top_k, query_generator_name):
+def get_reranking_filename(runs_folder, query_dataset, doc_dataset, dataset_split, retriever_name, retrieve_top_k, reranker_name, rerank_top_k, query_generator_name, train_with_k_distractors=0, generation_top_k=0):
     query_gen_add = "" if query_generator_name == "copy" else f".{query_generator_name}"
-    return f'{runs_folder}/run.rerank.retriever.top_{retrieve_top_k}.{retriever_name}.rerank.top_{rerank_top_k}.{query_dataset}.{doc_dataset}.{dataset_split}.{reranker_name}{query_gen_add}.trec'
+    if train_with_k_distractors == 0:
+        distractors_add = ""
+    elif train_with_k_distractors > 0:
+        distractors_add = f".distractors_{train_with_k_distractors}of{generation_top_k}"
+    return f'{runs_folder}/run.rerank.retriever.top_{retrieve_top_k}.{retriever_name}.rerank.top_{rerank_top_k}{distractors_add}.{query_dataset}.{doc_dataset}.{dataset_split}.{reranker_name}{query_gen_add}.trec'
 
 def get_ranking_filename(runs_folder, query_dataset, doc_dataset, retriever_name, dataset_split, retrieve_top_k, query_generator_name, train_with_k_distractors=0, distract_with_bad_topk=False, generation_top_k=0):
     if retriever_name == 'oracle_provenance':
